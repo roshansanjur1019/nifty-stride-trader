@@ -14,7 +14,301 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      broker_accounts: {
+        Row: {
+          access_token_encrypted: string | null
+          api_key_encrypted: string | null
+          api_secret_encrypted: string | null
+          broker_type: Database["public"]["Enums"]["broker_type"]
+          created_at: string
+          id: string
+          is_active: boolean | null
+          last_connected_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          broker_type: Database["public"]["Enums"]["broker_type"]
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_connected_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          broker_type?: Database["public"]["Enums"]["broker_type"]
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          last_connected_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      market_data: {
+        Row: {
+          change_percent: number | null
+          id: string
+          price: number
+          symbol: string
+          timestamp: string
+          vix: number | null
+          volume: number | null
+        }
+        Insert: {
+          change_percent?: number | null
+          id?: string
+          price: number
+          symbol: string
+          timestamp?: string
+          vix?: number | null
+          volume?: number | null
+        }
+        Update: {
+          change_percent?: number | null
+          id?: string
+          price?: number
+          symbol?: string
+          timestamp?: string
+          vix?: number | null
+          volume?: number | null
+        }
+        Relationships: []
+      }
+      performance_metrics: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          max_drawdown: number | null
+          total_pnl: number | null
+          total_trades: number | null
+          user_id: string
+          win_rate: number | null
+          winning_trades: number | null
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          max_drawdown?: number | null
+          total_pnl?: number | null
+          total_trades?: number | null
+          user_id: string
+          win_rate?: number | null
+          winning_trades?: number | null
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          max_drawdown?: number | null
+          total_pnl?: number | null
+          total_trades?: number | null
+          user_id?: string
+          win_rate?: number | null
+          winning_trades?: number | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+          phone: string | null
+          subscription_expires_at: string | null
+          subscription_plan:
+            | Database["public"]["Enums"]["subscription_plan"]
+            | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          subscription_expires_at?: string | null
+          subscription_plan?:
+            | Database["public"]["Enums"]["subscription_plan"]
+            | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          subscription_expires_at?: string | null
+          subscription_plan?:
+            | Database["public"]["Enums"]["subscription_plan"]
+            | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      strategy_configs: {
+        Row: {
+          created_at: string
+          entry_time: string | null
+          exit_time: string | null
+          high_volatility_gap: number | null
+          id: string
+          is_active: boolean | null
+          max_loss_per_trade: number | null
+          minimum_premium_threshold: number | null
+          profit_booking_percentage: number | null
+          strategy_name: string
+          strike_gap_points: number | null
+          updated_at: string
+          user_id: string
+          volatility_threshold: number | null
+        }
+        Insert: {
+          created_at?: string
+          entry_time?: string | null
+          exit_time?: string | null
+          high_volatility_gap?: number | null
+          id?: string
+          is_active?: boolean | null
+          max_loss_per_trade?: number | null
+          minimum_premium_threshold?: number | null
+          profit_booking_percentage?: number | null
+          strategy_name?: string
+          strike_gap_points?: number | null
+          updated_at?: string
+          user_id: string
+          volatility_threshold?: number | null
+        }
+        Update: {
+          created_at?: string
+          entry_time?: string | null
+          exit_time?: string | null
+          high_volatility_gap?: number | null
+          id?: string
+          is_active?: boolean | null
+          max_loss_per_trade?: number | null
+          minimum_premium_threshold?: number | null
+          profit_booking_percentage?: number | null
+          strategy_name?: string
+          strike_gap_points?: number | null
+          updated_at?: string
+          user_id?: string
+          volatility_threshold?: number | null
+        }
+        Relationships: []
+      }
+      trade_legs: {
+        Row: {
+          created_at: string
+          entry_price: number | null
+          exit_price: number | null
+          id: string
+          option_type: Database["public"]["Enums"]["option_type"]
+          pnl: number | null
+          premium: number
+          quantity: number
+          strike_price: number
+          trade_id: string
+        }
+        Insert: {
+          created_at?: string
+          entry_price?: number | null
+          exit_price?: number | null
+          id?: string
+          option_type: Database["public"]["Enums"]["option_type"]
+          pnl?: number | null
+          premium: number
+          quantity: number
+          strike_price: number
+          trade_id: string
+        }
+        Update: {
+          created_at?: string
+          entry_price?: number | null
+          exit_price?: number | null
+          id?: string
+          option_type?: Database["public"]["Enums"]["option_type"]
+          pnl?: number | null
+          premium?: number
+          quantity?: number
+          strike_price?: number
+          trade_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_legs_trade_id_fkey"
+            columns: ["trade_id"]
+            isOneToOne: false
+            referencedRelation: "trades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trades: {
+        Row: {
+          created_at: string
+          entry_time: string | null
+          exit_time: string | null
+          id: string
+          nifty_price_at_entry: number | null
+          strategy_config_id: string
+          total_pnl: number | null
+          total_premium_received: number | null
+          trade_status: Database["public"]["Enums"]["trade_status"] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          entry_time?: string | null
+          exit_time?: string | null
+          id?: string
+          nifty_price_at_entry?: number | null
+          strategy_config_id: string
+          total_pnl?: number | null
+          total_premium_received?: number | null
+          trade_status?: Database["public"]["Enums"]["trade_status"] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          entry_time?: string | null
+          exit_time?: string | null
+          id?: string
+          nifty_price_at_entry?: number | null
+          strategy_config_id?: string
+          total_pnl?: number | null
+          total_premium_received?: number | null
+          trade_status?: Database["public"]["Enums"]["trade_status"] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trades_strategy_config_id_fkey"
+            columns: ["strategy_config_id"]
+            isOneToOne: false
+            referencedRelation: "strategy_configs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +317,10 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      broker_type: "zerodha" | "angel_one"
+      option_type: "CE" | "PE"
+      subscription_plan: "trial" | "basic" | "premium"
+      trade_status: "pending" | "executed" | "cancelled" | "expired"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +447,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      broker_type: ["zerodha", "angel_one"],
+      option_type: ["CE", "PE"],
+      subscription_plan: ["trial", "basic", "premium"],
+      trade_status: ["pending", "executed", "cancelled", "expired"],
+    },
   },
 } as const
