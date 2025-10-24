@@ -6,23 +6,43 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Base32 decode (RFC 4648)
+function base32ToBytes(base32: string): Uint8Array {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const cleaned = base32.replace(/=+$/,'').replace(/\s+/g,'').toUpperCase();
+  let bits = '';
+  for (const c of cleaned) {
+    const val = alphabet.indexOf(c);
+    if (val === -1) continue; // ignore unknown chars/spaces
+    bits += val.toString(2).padStart(5, '0');
+  }
+  const bytes: number[] = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(parseInt(bits.substring(i, i + 8), 2));
+  }
+  return new Uint8Array(bytes);
+}
+
 // Generate TOTP code
 function generateTOTP(secret: string): string {
   const epoch = Math.floor(Date.now() / 1000);
   const counter = Math.floor(epoch / 30);
   
-  // Convert counter to 8-byte buffer
+  // Convert counter to 8-byte buffer (big-endian)
   const buffer = new ArrayBuffer(8);
   const view = new DataView(buffer);
   view.setBigUint64(0, BigInt(counter), false);
   
-  // Create HMAC
-  const hmac = createHmac('sha1', secret);
+  // Decode base32 secret to raw bytes
+  const keyBytes = base32ToBytes(secret);
+
+  // Create HMAC-SHA1 with decoded key
+  const hmac = createHmac('sha1', keyBytes);
   hmac.update(new Uint8Array(buffer));
   const hash = new Uint8Array(hmac.digest());
   
-  // Dynamic truncation
-  const offset = hash[19] & 0xf;
+  // Dynamic truncation (use last nibble as offset)
+  const offset = hash[hash.length - 1] & 0xf;
   const code = (
     ((hash[offset] & 0x7f) << 24) |
     ((hash[offset + 1] & 0xff) << 16) |
@@ -33,37 +53,61 @@ function generateTOTP(secret: string): string {
   return code.toString().padStart(6, '0');
 }
 
-// Authenticate and get session token
+// Authenticate and get session token (tries password+TOTP first, then MPIN+TOTP fallback)
 async function authenticateAngelOne(
   apiKey: string,
   clientId: string,
-  password: string,
+  secretPin: string,
   totp: string
 ): Promise<{ success: boolean; token?: string; feedToken?: string; error?: string }> {
   try {
-    const response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword', {
+    const commonHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-UserType': 'USER',
+      'X-SourceID': 'WEB',
+      'X-ClientLocalIP': '127.0.0.1',
+      'X-ClientPublicIP': '127.0.0.1',
+      'X-MACAddress': '00:00:00:00:00:00',
+      'X-PrivateKey': apiKey
+    };
+
+    // Attempt loginByPassword (password should be 4-digit PIN as per SmartAPI docs)
+    let response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByPassword', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'X-UserType': 'USER',
-        'X-SourceID': 'WEB',
-        'X-ClientLocalIP': '127.0.0.1',
-        'X-ClientPublicIP': '127.0.0.1',
-        'X-MACAddress': '00:00:00:00:00:00',
-        'X-PrivateKey': apiKey
-      },
+      headers: commonHeaders,
       body: JSON.stringify({
         clientcode: clientId,
-        password: password,
+        password: secretPin,
         totp: totp
       })
     });
 
-    const data = await response.json();
-    console.log('Angel One auth response:', data);
+    let data = await response.json();
+    console.log('Angel One auth response (loginByPassword):', data);
 
-    if (data.status && data.data) {
+    // Fallback to loginByMpin if password flow is disallowed for this account
+    if ((!data?.status || !data?.data) &&
+        (data?.errorcode === 'AB7001' ||
+         (typeof data?.message === 'string' && data.message.toLowerCase().includes('loginbypassword is not allowed')))) {
+      try {
+        response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByMpin', {
+          method: 'POST',
+          headers: commonHeaders,
+          body: JSON.stringify({
+            clientcode: clientId,
+            mpin: secretPin,
+            totp: totp
+          })
+        });
+        data = await response.json();
+        console.log('Angel One auth response (loginByMpin):', data);
+      } catch (fbErr) {
+        console.error('Angel One MPIN fallback error:', fbErr);
+      }
+    }
+
+    if (data?.status && data?.data) {
       return {
         success: true,
         token: data.data.jwtToken,
@@ -73,7 +117,7 @@ async function authenticateAngelOne(
 
     return {
       success: false,
-      error: data.message || 'Authentication failed'
+      error: data?.message || 'Authentication failed'
     };
   } catch (error) {
     console.error('Angel One authentication error:', error);
