@@ -15,10 +15,12 @@ interface StrategyConfigFormProps {
 
 const StrategyConfigForm = ({ userId, strategy, onClose }: StrategyConfigFormProps) => {
   const { toast } = useToast();
+  const isFixedTiming = strategy?.fixed_timing || strategy?.strategy_name === "Short Strangle";
+  
   const [config, setConfig] = useState({
     strategy_name: strategy?.strategy_name || "Short Strangle",
-    entry_time: strategy?.entry_time || "15:10:00",
-    exit_time: strategy?.exit_time || "15:00:00",
+    entry_time: isFixedTiming ? "15:10:00" : (strategy?.entry_time || "09:15:00"),
+    exit_time: isFixedTiming ? "15:00:00" : (strategy?.exit_time || "15:15:00"),
     strike_gap_points: strategy?.strike_gap_points || 150,
     minimum_premium_threshold: strategy?.minimum_premium_threshold || 80,
     profit_booking_percentage: strategy?.profit_booking_percentage || 1,
@@ -58,7 +60,9 @@ const StrategyConfigForm = ({ userId, strategy, onClose }: StrategyConfigFormPro
 
         toast({
           title: "Strategy Created",
-          description: "Your strategy has been configured successfully.",
+          description: isFixedTiming 
+            ? "Skyspear strategy deployed with fixed execution at 3:10 PM daily"
+            : "Your strategy has been configured successfully.",
         });
       }
 
@@ -81,32 +85,55 @@ const StrategyConfigForm = ({ userId, strategy, onClose }: StrategyConfigFormPro
           </Button>
           <div>
             <CardTitle>Configure {config.strategy_name}</CardTitle>
-            <CardDescription>Set parameters for your trading strategy</CardDescription>
+            <CardDescription>
+              {isFixedTiming 
+                ? "Skyspear Short Strangle executes at 3:10 PM daily with exit at 3:00 PM next day"
+                : "Set parameters for your trading strategy"}
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {isFixedTiming && (
+            <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Entry:</span>
+                  <span className="ml-2 font-semibold">3:10 PM Daily (Fixed)</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Exit:</span>
+                  <span className="ml-2 font-semibold">3:00 PM Next Day (Fixed)</span>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <Label htmlFor="entry_time">Entry Time</Label>
-              <Input
-                id="entry_time"
-                type="time"
-                value={config.entry_time}
-                onChange={(e) => setConfig({ ...config, entry_time: e.target.value })}
-              />
-            </div>
+            {!isFixedTiming && (
+              <>
+                <div>
+                  <Label htmlFor="entry_time">Entry Time</Label>
+                  <Input
+                    id="entry_time"
+                    type="time"
+                    value={config.entry_time}
+                    onChange={(e) => setConfig({ ...config, entry_time: e.target.value })}
+                  />
+                </div>
 
-            <div>
-              <Label htmlFor="exit_time">Exit Time</Label>
-              <Input
-                id="exit_time"
-                type="time"
-                value={config.exit_time}
-                onChange={(e) => setConfig({ ...config, exit_time: e.target.value })}
-              />
-            </div>
+                <div>
+                  <Label htmlFor="exit_time">Exit Time</Label>
+                  <Input
+                    id="exit_time"
+                    type="time"
+                    value={config.exit_time}
+                    onChange={(e) => setConfig({ ...config, exit_time: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
 
             <div>
               <Label htmlFor="strike_gap_points">Strike Gap (Points)</Label>
