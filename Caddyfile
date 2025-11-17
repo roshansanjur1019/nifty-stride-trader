@@ -1,11 +1,11 @@
-{$DOMAIN} {
+skyspear.in {
   reverse_proxy frontend:3000
 }
 
-www.{$DOMAIN} {
-  redir https://{$DOMAIN}{uri}
+www.skyspear.in {
+  redir https://skyspear.in{uri}
 }
 
-api.{$DOMAIN} {
+api.skyspear.in {
   reverse_proxy angel-one:8000
 }

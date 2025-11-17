@@ -7,19 +7,15 @@ services:
     command: deno run --allow-net --allow-env index.ts
     ports:
       - "8000:8000"
-    environment:
-      - ANGEL_ONE_API_KEY=${ANGEL_ONE_API_KEY}
-      - ANGEL_ONE_API_SECRET=${ANGEL_ONE_API_SECRET}
-      - ANGEL_ONE_CLIENT_ID=${ANGEL_ONE_CLIENT_ID}
-      - ANGEL_ONE_PASSWORD=${ANGEL_ONE_PASSWORD}
-      - ANGEL_ONE_TOTP_SECRET=${ANGEL_ONE_TOTP_SECRET}
+    env_file:
+      - ./.env.angelone
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        - VITE_BACKEND_URL=https://api.${DOMAIN}
+        - VITE_BACKEND_URL=https://api.skyspear.in
     ports:
       - "3000:3000"
     depends_on:
@@ -30,8 +26,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      - DOMAIN=${DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

@@ -1,0 +1,48 @@
+name: Deploy to AWS Instance
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: SSH Deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            if ! command -v docker >/dev/null 2>&1; then
+              curl -fsSL https://get.docker.com | sh
+            fi
+            if ! docker compose version >/dev/null 2>&1; then
+              DOCKER_CONFIG=${HOME}/.docker
+              mkdir -p $DOCKER_CONFIG/cli-plugins
+              curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose
+              chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
+            fi
+            mkdir -p ~/apps/nifty-stride-trader
+            cd ~/apps/nifty-stride-trader
+            if [ -d .git ]; then
+              git fetch --all
+              git reset --hard origin/main
+            else
+              git clone https://github.com/roshansanjur1019/nifty-stride-trader.git .
+            fi
+            echo "ANGEL_ONE_API_KEY=${{ secrets.ANGEL_ONE_API_KEY }}" > .env.angelone
+            echo "ANGEL_ONE_API_SECRET=${{ secrets.ANGEL_ONE_API_SECRET }}" >> .env.angelone
+            echo "ANGEL_ONE_CLIENT_ID=${{ secrets.ANGEL_ONE_CLIENT_ID }}" >> .env.angelone
+            echo "ANGEL_ONE_PASSWORD=${{ secrets.ANGEL_ONE_PASSWORD }}" >> .env.angelone
+            echo "ANGEL_ONE_TOTP_SECRET=${{ secrets.ANGEL_ONE_TOTP_SECRET }}" >> .env.angelone
+            echo "DOMAIN=${{ secrets.DOMAIN }}" > .env.hosting
+            docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend
+            docker compose --env-file .env.angelone --env-file .env.hosting up -d
