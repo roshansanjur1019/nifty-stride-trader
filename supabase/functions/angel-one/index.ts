@@ -37,7 +37,7 @@ function generateTOTP(secret: string): string {
   const keyBytes = base32ToBytes(secret);
 
   // Create HMAC-SHA1 with decoded key
-  const hmac = createHmac('sha1', keyBytes);
+  const hmac = createHmac('sha1', keyBytes.buffer);
   hmac.update(new Uint8Array(buffer));
   const hash = new Uint8Array(hmac.digest());
   
@@ -62,8 +62,6 @@ async function authenticateAngelOne(
 ): Promise<{ success: boolean; token?: string; feedToken?: string; error?: string }> {
   try {
     console.log('Attempting Angel One authentication...');
-    console.log('Client ID:', clientId);
-    console.log('TOTP:', totp);
     
     const response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByMpin', {
       method: 'POST',
@@ -164,22 +162,16 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  let action: string | undefined;
   try {
-    const body = await req.json();
-    action = body?.action;
-  } catch (_) {
-    action = undefined;
-  }
-
-  if (req.method === 'GET' && !action) {
-    return new Response(JSON.stringify({ success: true, message: 'ok' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-
-  if (!action) {
-    return new Response(JSON.stringify({ error: 'Invalid request body' }), {
+    const { action } = await req.json();
+    
+    // Validate action parameter
+    if (!action || !['authenticate', 'fetchMarketData'].includes(action)) {
+      throw new Error('Invalid action parameter. Must be "authenticate" or "fetchMarketData"');
+    }
+    
+    if (!action) {
+      return new Response(JSON.stringify({ error: 'Invalid request body' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
