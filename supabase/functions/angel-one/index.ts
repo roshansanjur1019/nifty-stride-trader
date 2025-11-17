@@ -58,7 +58,10 @@ async function authenticateAngelOne(
   apiKey: string,
   clientId: string,
   mpin: string,
-  totp: string
+  totp: string,
+  clientPublicIp?: string,
+  clientLocalIp?: string,
+  macAddress?: string,
 ): Promise<{ success: boolean; token?: string; feedToken?: string; error?: string }> {
   try {
     console.log('Attempting Angel One authentication...');
@@ -70,9 +73,9 @@ async function authenticateAngelOne(
         'Accept': 'application/json',
         'X-UserType': 'USER',
         'X-SourceID': 'WEB',
-        'X-ClientLocalIP': '127.0.0.1',
-        'X-ClientPublicIP': '127.0.0.1',
-        'X-MACAddress': '00:00:00:00:00:00',
+        'X-ClientLocalIP': clientLocalIp || clientPublicIp || '127.0.0.1',
+        'X-ClientPublicIP': clientPublicIp || '127.0.0.1',
+        'X-MACAddress': macAddress || '00:00:00:00:00:00',
         'X-PrivateKey': apiKey
       },
       body: JSON.stringify({
@@ -147,6 +150,12 @@ async function fetchMarketData(
       })
     });
 
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Non-JSON market data response:', text.substring(0, 500));
+      return { status: false, message: 'Non-JSON response', raw: text };
+    }
     const data = await response.json();
     console.log('Angel One market data response:', data);
 
@@ -197,8 +206,14 @@ serve(async (req) => {
       });
     }
 
+    const forwarded = req.headers.get('x-forwarded-for') || '';
+    const forwardedIp = forwarded.split(',')[0]?.trim();
+    const publicIp = Deno.env.get('ANGEL_ONE_PUBLIC_IP') || forwardedIp;
+    const localIp = Deno.env.get('ANGEL_ONE_LOCAL_IP') || publicIp;
+    const macAddress = Deno.env.get('ANGEL_ONE_MAC_ADDRESS') || undefined;
+
     const totp = generateTOTP(totpSecret);
-    const authResult = await authenticateAngelOne(apiKey, clientId, mpin, totp);
+    const authResult = await authenticateAngelOne(apiKey, clientId, mpin, totp, publicIp, localIp, macAddress);
 
     if (!authResult.success || !authResult.token) {
       return new Response(JSON.stringify({ error: authResult.error || 'Authentication failed' }), {

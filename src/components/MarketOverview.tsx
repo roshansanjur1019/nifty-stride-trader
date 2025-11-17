@@ -14,6 +14,21 @@ interface MarketData {
   volume?: number;
 }
 
+interface AngelPayload {
+  data?: {
+    ltp?: number;
+    last_price?: number;
+    LTP?: number;
+  };
+  ltp?: number;
+}
+
+interface AngelResponse {
+  success: boolean;
+  data?: AngelPayload;
+  error?: string;
+}
+
 const MarketOverview = () => {
   const { toast } = useToast();
   const [marketData, setMarketData] = useState<MarketData[]>([
@@ -59,35 +74,47 @@ const MarketOverview = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'fetchMarketData' }),
         });
-        const data = await res.json();
-        if (data?.success && data?.data) {
+        const data = (await res.json()) as AngelResponse;
+        if (data.success && data.data) {
           toast({
             title: "Live Data Loaded",
             description: "Successfully fetched live market data from Angel One",
           });
           setLastUpdate(new Date());
+          const payload = data.data;
+          const ltp = payload?.data?.ltp ?? payload?.data?.last_price ?? payload?.data?.LTP ?? payload?.ltp;
+          if (typeof ltp === 'number') {
+            setMarketData(prev => prev.map(item => item.symbol === 'NIFTY' ? { ...item, price: ltp } : item));
+          }
         } else {
-          throw new Error(data?.error || "Failed to fetch market data");
+          const msg = data?.error || "Failed to fetch market data";
+          throw new Error(msg);
         }
       } else {
         const { data, error } = await supabase.functions.invoke('angel-one', {
           body: { action: 'fetchMarketData' }
         });
         if (error) throw error;
-        if (data?.success && data?.data) {
+        const resp = data as AngelResponse;
+        if (resp?.success && resp?.data) {
           toast({
             title: "Live Data Loaded",
             description: "Successfully fetched live market data from Angel One",
           });
           setLastUpdate(new Date());
+          const ltp = resp?.data?.data?.ltp ?? resp?.data?.data?.last_price ?? resp?.data?.data?.LTP ?? resp?.data?.ltp;
+          if (typeof ltp === 'number') {
+            setMarketData(prev => prev.map(item => item.symbol === 'NIFTY' ? { ...item, price: ltp } : item));
+          }
         } else {
-          throw new Error(data?.error || "Failed to fetch market data");
+          throw new Error(resp?.error || "Failed to fetch market data");
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
       toast({
         title: "Failed to Fetch Live Data",
-        description: error.message || "Using cached market data",
+        description: message || "Using cached market data",
         variant: "destructive",
       });
     } finally {
