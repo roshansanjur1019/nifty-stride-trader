@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Plus, RefreshCw } from "lucide-react";
+import { brokerCredentialsSchema } from "@/lib/validation";
 
 interface BrokerIntegrationProps {
   userId: string;
@@ -44,22 +45,28 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
     e.preventDefault();
     
     try {
-      const { error } = await supabase
-        .from("broker_accounts")
-        .insert({
-          user_id: userId,
-          broker_type: selectedBroker,
-          api_key_encrypted: credentials.apiKey,
-          api_secret_encrypted: credentials.apiSecret,
-          is_active: true,
-          last_connected_at: new Date().toISOString(),
-        });
+      // Validate input
+      const validatedData = brokerCredentialsSchema.parse({
+        apiKey: credentials.apiKey,
+        apiSecret: credentials.apiSecret,
+        brokerType: selectedBroker,
+      });
+
+      // Call secure edge function to encrypt and store credentials
+      const { data, error } = await supabase.functions.invoke('store-broker-credentials', {
+        body: {
+          apiKey: validatedData.apiKey,
+          apiSecret: validatedData.apiSecret,
+          brokerType: validatedData.brokerType,
+        }
+      });
 
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to store credentials');
 
       toast({
         title: "Broker Connected",
-        description: `${selectedBroker === "zerodha" ? "Zerodha" : "Angel One"} has been connected successfully.`,
+        description: `${selectedBroker === "zerodha" ? "Zerodha" : "Angel One"} has been connected successfully with encrypted storage.`,
       });
 
       setCredentials({ apiKey: "", apiSecret: "" });

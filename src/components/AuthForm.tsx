@@ -8,6 +8,7 @@ import { Mail, Lock, User, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { loginSchema, signupSchema } from "@/lib/validation";
 
 const AuthForm = () => {
   const navigate = useNavigate();
@@ -32,9 +33,15 @@ const AuthForm = () => {
     setIsLoading(true);
     
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // Validate input
+      const validatedData = loginSchema.parse({
         email: formData.email,
         password: formData.password,
+      });
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: validatedData.email,
+        password: validatedData.password,
       });
 
       if (error) throw error;
@@ -58,26 +65,24 @@ const AuthForm = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Password Mismatch",
-        description: "Passwords do not match.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsLoading(true);
     
     try {
-      const { error } = await supabase.auth.signUp({
+      // Validate input
+      const validatedData = signupSchema.parse({
         email: formData.email,
         password: formData.password,
+        confirmPassword: formData.confirmPassword,
+        fullName: formData.fullName,
+      });
+
+      const { error } = await supabase.auth.signUp({
+        email: validatedData.email,
+        password: validatedData.password,
         options: {
           emailRedirectTo: `${window.location.origin}/dashboard`,
           data: {
-            full_name: formData.fullName,
+            full_name: validatedData.fullName,
           }
         }
       });

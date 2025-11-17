@@ -2,3 +2,6 @@ project_id = "blnphqmmsjlxlqnrmriw"
 
 [functions.angel-one]
 verify_jwt = false
+
+[functions.store-broker-credentials]
+verify_jwt = true

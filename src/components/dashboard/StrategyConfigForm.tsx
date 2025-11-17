@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft } from "lucide-react";
+import { strategyConfigSchema } from "@/lib/validation";
 
 interface StrategyConfigFormProps {
   userId: string;
@@ -33,11 +34,14 @@ const StrategyConfigForm = ({ userId, strategy, onClose }: StrategyConfigFormPro
     e.preventDefault();
 
     try {
+      // Validate input
+      const validatedConfig = strategyConfigSchema.parse(config);
+
       if (strategy?.id) {
         // Update existing strategy
         const { error } = await supabase
           .from("strategy_configs")
-          .update(config)
+          .update(validatedConfig)
           .eq("id", strategy.id);
 
         if (error) throw error;
@@ -51,7 +55,7 @@ const StrategyConfigForm = ({ userId, strategy, onClose }: StrategyConfigFormPro
         const { error } = await supabase
           .from("strategy_configs")
           .insert({
-            ...config,
+            ...validatedConfig,
             user_id: userId,
             is_active: true,
           });
