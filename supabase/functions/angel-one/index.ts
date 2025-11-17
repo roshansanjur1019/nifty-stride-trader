@@ -76,6 +76,9 @@ async function authenticateAngelOne(
         'X-ClientLocalIP': clientLocalIp || clientPublicIp || '127.0.0.1',
         'X-ClientPublicIP': clientPublicIp || '127.0.0.1',
         'X-MACAddress': macAddress || '00:00:00:00:00:00',
+        'X-ClientID': clientId,
+        'X-ClientCode': clientId,
+        'User-Agent': 'Mozilla/5.0 (compatible; Skyspear/1.0; +https://skyspear.in)',
         'X-PrivateKey': apiKey
       },
       body: JSON.stringify({
@@ -126,11 +129,14 @@ async function authenticateAngelOne(
 async function fetchMarketData(
   token: string,
   apiKey: string,
-  clientId: string
+  clientId: string,
+  options?: { exchange?: string; symboltoken?: string; mode?: string }
 ): Promise<any> {
   try {
-    // Get LTP (Last Traded Price) for NIFTY 50
-    const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/order/v1/getLtpData', {
+    const exchange = options?.exchange || 'NSE';
+    const symboltoken = options?.symboltoken || '99926000';
+    const mode = options?.mode || 'LTP';
+    const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/quote/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -141,12 +147,15 @@ async function fetchMarketData(
         'X-ClientLocalIP': '127.0.0.1',
         'X-ClientPublicIP': '127.0.0.1',
         'X-MACAddress': '00:00:00:00:00:00',
+        'X-ClientID': clientId,
+        'X-ClientCode': clientId,
+        'User-Agent': 'Mozilla/5.0 (compatible; Skyspear/1.0; +https://skyspear.in)',
         'X-PrivateKey': apiKey
       },
       body: JSON.stringify({
-        exchange: 'NSE',
-        tradingsymbol: 'NIFTY 50',
-        symboltoken: '99926000'
+        mode,
+        exchange,
+        symboltoken
       })
     });
 
@@ -172,9 +181,10 @@ serve(async (req) => {
   }
 
   let action: string | undefined;
+  let reqBody: any = undefined;
   try {
-    const body = await req.json();
-    action = body?.action;
+    reqBody = await req.json();
+    action = reqBody?.action;
   } catch (_) {
     action = undefined;
   }
@@ -229,7 +239,11 @@ serve(async (req) => {
     }
 
     if (action === 'fetchMarketData') {
-      const marketData = await fetchMarketData(authResult.token, apiKey, clientId);
+      const marketData = await fetchMarketData(authResult.token, apiKey, clientId, {
+        exchange: reqBody?.exchange,
+        symboltoken: reqBody?.symboltoken,
+        mode: reqBody?.mode,
+      });
       return new Response(JSON.stringify({ success: true, data: marketData }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
