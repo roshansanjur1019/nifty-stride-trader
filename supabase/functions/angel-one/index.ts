@@ -59,12 +59,18 @@ async function authenticateAngelOne(
   clientId: string,
   mpin: string,
   totp: string,
-  clientPublicIp?: string,
-  clientLocalIp?: string,
-  macAddress?: string,
+  clientPublicIp: string,
+  clientLocalIp: string,
+  macAddress: string,
 ): Promise<{ success: boolean; token?: string; feedToken?: string; error?: string }> {
   try {
-    console.log('Attempting Angel One authentication...');
+    console.log('=== Angel One Authentication Attempt ===');
+    console.log('Public IP:', clientPublicIp);
+    console.log('Local IP:', clientLocalIp);
+    console.log('MAC Address:', macAddress);
+    console.log('Client ID:', clientId);
+    console.log('TOTP:', totp);
+    console.log('=======================================');
     
     const response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByMpin', {
       method: 'POST',
@@ -73,16 +79,11 @@ async function authenticateAngelOne(
         'Accept': 'application/json',
         'X-UserType': 'USER',
         'X-SourceID': 'WEB',
-        'X-ClientLocalIP': clientLocalIp || clientPublicIp || '127.0.0.1',
-        'X-ClientPublicIP': clientPublicIp || '127.0.0.1',
-        'X-MACAddress': macAddress || '00:00:00:00:00:00',
-        'X-ClientID': clientId,
-        'X-ClientCode': clientId,
-        'Origin': 'https://smartapi.angelbroking.com',
-        'Referer': 'https://smartapi.angelbroking.com/',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'User-Agent': 'Mozilla/5.0',
-        'X-PrivateKey': apiKey
+        'X-ClientLocalIP': clientLocalIp,
+        'X-ClientPublicIP': clientPublicIp,
+        'X-MACAddress': macAddress,
+        'X-PrivateKey': apiKey,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       body: JSON.stringify({
         clientcode: clientId,
@@ -133,14 +134,15 @@ async function fetchMarketData(
   token: string,
   apiKey: string,
   clientId: string,
+  clientPublicIp: string,
+  clientLocalIp: string,
+  macAddress: string,
   options?: { mode?: string; exchangeTokens?: Record<string, string[]> }
 ): Promise<any> {
   try {
     const mode = options?.mode || 'LTP';
     const exchangeTokens = options?.exchangeTokens || { NSE: ['99926000','99926009','99926037','99926017'], BSE: ['99919000'] };
-    const envPublicIp = Deno.env.get('ANGEL_ONE_PUBLIC_IP');
-    const envLocalIp = Deno.env.get('ANGEL_ONE_LOCAL_IP');
-    const envMac = Deno.env.get('ANGEL_ONE_MAC_ADDRESS');
+    
     const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/quote/', {
       method: 'POST',
       headers: {
@@ -149,16 +151,11 @@ async function fetchMarketData(
         'Authorization': `Bearer ${token}`,
         'X-UserType': 'USER',
         'X-SourceID': 'WEB',
-        'X-ClientLocalIP': envLocalIp || envPublicIp || '127.0.0.1',
-        'X-ClientPublicIP': envPublicIp || '127.0.0.1',
-        'X-MACAddress': envMac || '00:00:00:00:00:00',
-        'X-ClientID': clientId,
-        'X-ClientCode': clientId,
-        'Origin': 'https://smartapi.angelbroking.com',
-        'Referer': 'https://smartapi.angelbroking.com/',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'User-Agent': 'Mozilla/5.0',
-        'X-PrivateKey': apiKey
+        'X-ClientLocalIP': clientLocalIp,
+        'X-ClientPublicIP': clientPublicIp,
+        'X-MACAddress': macAddress,
+        'X-PrivateKey': apiKey,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       body: JSON.stringify({ mode, exchangeTokens })
     });
@@ -222,9 +219,17 @@ serve(async (req) => {
 
     const forwarded = req.headers.get('x-forwarded-for') || '';
     const forwardedIp = forwarded.split(',')[0]?.trim();
-    const publicIp = Deno.env.get('ANGEL_ONE_PUBLIC_IP') || forwardedIp;
-    const localIp = Deno.env.get('ANGEL_ONE_LOCAL_IP') || publicIp;
-    const macAddress = Deno.env.get('ANGEL_ONE_MAC_ADDRESS') || undefined;
+    
+    // Use explicit IPs with proper defaults
+    const publicIp = Deno.env.get('ANGEL_ONE_PUBLIC_IP') || '98.88.173.81';
+    const localIp = Deno.env.get('ANGEL_ONE_LOCAL_IP') || '172.31.26.44';
+    const macAddress = Deno.env.get('ANGEL_ONE_MAC_ADDRESS') || 'fe:ed:fa:ce:be:ef';
+
+    console.log('=== Starting authentication with IPs ===');
+    console.log('Public IP (to be used):', publicIp);
+    console.log('Local IP (to be used):', localIp);
+    console.log('MAC Address (to be used):', macAddress);
+    console.log('========================================');
 
     const totp = generateTOTP(totpSecret);
     const authResult = await authenticateAngelOne(apiKey, clientId, mpin, totp, publicIp, localIp, macAddress);
@@ -243,10 +248,18 @@ serve(async (req) => {
     }
 
     if (action === 'fetchMarketData') {
-      const marketData = await fetchMarketData(authResult.token, apiKey, clientId, {
-        mode: reqBody?.mode,
-        exchangeTokens: reqBody?.exchangeTokens,
-      });
+      const marketData = await fetchMarketData(
+        authResult.token, 
+        apiKey, 
+        clientId,
+        publicIp,
+        localIp,
+        macAddress,
+        {
+          mode: reqBody?.mode,
+          exchangeTokens: reqBody?.exchangeTokens,
+        }
+      );
       return new Response(JSON.stringify({ success: true, data: marketData }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
