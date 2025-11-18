@@ -44,6 +44,9 @@ jobs:
             echo "ANGEL_ONE_CLIENT_ID=${{ secrets.ANGEL_ONE_CLIENT_ID }}" >> .env.angelone
             echo "ANGEL_ONE_PASSWORD=${{ secrets.ANGEL_ONE_PASSWORD }}" >> .env.angelone
             echo "ANGEL_ONE_TOTP_SECRET=${{ secrets.ANGEL_ONE_TOTP_SECRET }}" >> .env.angelone
+            if [ -n "${{ secrets.ANGEL_ONE_PUBLIC_IP }}" ]; then echo "ANGEL_ONE_PUBLIC_IP=${{ secrets.ANGEL_ONE_PUBLIC_IP }}" >> .env.angelone; fi
+            if [ -n "${{ secrets.ANGEL_ONE_LOCAL_IP }}" ]; then echo "ANGEL_ONE_LOCAL_IP=${{ secrets.ANGEL_ONE_LOCAL_IP }}" >> .env.angelone; fi
+            if [ -n "${{ secrets.ANGEL_ONE_MAC_ADDRESS }}" ]; then echo "ANGEL_ONE_MAC_ADDRESS=${{ secrets.ANGEL_ONE_MAC_ADDRESS }}" >> .env.angelone; fi
             echo "DOMAIN=${{ secrets.DOMAIN }}" > .env.hosting
             sudo docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend
             sudo docker compose --env-file .env.angelone --env-file .env.hosting up -d

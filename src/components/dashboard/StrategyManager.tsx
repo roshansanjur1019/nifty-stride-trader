@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Plus, Play, Pause, Settings, TrendingUp, Shield, TrendingDown, Sparkles, Zap } from "lucide-react";
 import StrategyConfigForm from "./StrategyConfigForm";
 import MarketSuggestions from "./MarketSuggestions";
+import AutoExecuteDialog from "./AutoExecuteDialog";
 
 interface StrategyManagerProps {
   userId: string;
@@ -20,6 +21,7 @@ const StrategyManager = ({ userId }: StrategyManagerProps) => {
   const [showConfigForm, setShowConfigForm] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<any>(null);
   const [autoExecuteEnabled, setAutoExecuteEnabled] = useState(false);
+  const [showAutoDialog, setShowAutoDialog] = useState(false);
 
   const optionSellingStrategies = [
     {
@@ -130,12 +132,18 @@ const StrategyManager = ({ userId }: StrategyManagerProps) => {
 
   const handleAutoExecuteToggle = async (enabled: boolean) => {
     setAutoExecuteEnabled(enabled);
-    toast({
-      title: enabled ? "Auto-Execution Enabled" : "Auto-Execution Disabled",
-      description: enabled 
-        ? "System will automatically execute best strategy based on market conditions"
-        : "Auto-execution has been disabled",
-    });
+    if (enabled) {
+      setShowAutoDialog(true);
+      toast({
+        title: "Auto-Execution Enabled",
+        description: "Pre-checking funds and VIX for Short Strangle",
+      });
+    } else {
+      toast({
+        title: "Auto-Execution Disabled",
+        description: "Auto-execution has been disabled",
+      });
+    }
   };
 
   if (loading) {
@@ -191,6 +199,7 @@ const StrategyManager = ({ userId }: StrategyManagerProps) => {
             )}
           </CardContent>
         </Card>
+        <AutoExecuteDialog open={showAutoDialog} onClose={() => setShowAutoDialog(false)} userId={userId} />
       </div>
 
       {/* Featured Strategy - Skyspear Short Strangle */}

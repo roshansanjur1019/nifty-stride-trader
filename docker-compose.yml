@@ -34,6 +34,17 @@ services:
       - frontend
       - angel-one
 
+  trading-worker:
+    image: node:18-alpine
+    working_dir: /app/server/trading-worker
+    command: ["node", "index.js"]
+    environment:
+      - PORT=4000
+    volumes:
+      - ./:/app:ro
+    depends_on:
+      - angel-one
+
 volumes:
   caddy-data:
   caddy-config:

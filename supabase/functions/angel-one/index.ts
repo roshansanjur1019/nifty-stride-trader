@@ -130,16 +130,16 @@ async function fetchMarketData(
   token: string,
   apiKey: string,
   clientId: string,
-  options?: { exchange?: string; symboltoken?: string; mode?: string }
+  options?: { mode?: string; exchangeTokens?: Record<string, string[]> }
 ): Promise<any> {
   try {
-    const exchange = options?.exchange || 'NSE';
-    const symboltoken = options?.symboltoken || '99926000';
     const mode = options?.mode || 'LTP';
+    const exchangeTokens = options?.exchangeTokens || { NSE: ['99926000','99926009','99926037','99926017'], BSE: ['99919000'] };
     const response = await fetch('https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/quote/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
         'X-UserType': 'USER',
@@ -149,14 +149,13 @@ async function fetchMarketData(
         'X-MACAddress': '00:00:00:00:00:00',
         'X-ClientID': clientId,
         'X-ClientCode': clientId,
-        'User-Agent': 'Mozilla/5.0 (compatible; Skyspear/1.0; +https://skyspear.in)',
+        'Origin': 'https://smartapi.angelbroking.com',
+        'Referer': 'https://smartapi.angelbroking.com/',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0',
         'X-PrivateKey': apiKey
       },
-      body: JSON.stringify({
-        mode,
-        exchange,
-        symboltoken
-      })
+      body: JSON.stringify({ mode, exchangeTokens })
     });
 
     const contentType = response.headers.get('content-type') || '';
@@ -240,9 +239,8 @@ serve(async (req) => {
 
     if (action === 'fetchMarketData') {
       const marketData = await fetchMarketData(authResult.token, apiKey, clientId, {
-        exchange: reqBody?.exchange,
-        symboltoken: reqBody?.symboltoken,
         mode: reqBody?.mode,
+        exchangeTokens: reqBody?.exchangeTokens,
       });
       return new Response(JSON.stringify({ success: true, data: marketData }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

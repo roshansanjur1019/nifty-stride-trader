@@ -68,44 +68,65 @@ const MarketOverview = () => {
     setLoading(true);
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL;
+      const exchangeTokens = {
+        NSE: ['99926000','99926009','99926037','99926017'],
+        BSE: ['99919000'],
+      };
       if (backendUrl) {
         const res = await fetch(`${backendUrl}/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'fetchMarketData' }),
+          body: JSON.stringify({ action: 'fetchMarketData', mode: 'LTP', exchangeTokens }),
         });
         const data = (await res.json()) as AngelResponse;
-        if (data.success && data.data) {
+        const ok = (data as any).success && (data as any).data && ((data as any).data.status ?? true);
+        if (ok) {
           toast({
             title: "Live Data Loaded",
             description: "Successfully fetched live market data from Angel One",
           });
           setLastUpdate(new Date());
-          const payload = data.data;
-          const ltp = payload?.data?.ltp ?? payload?.data?.last_price ?? payload?.data?.LTP ?? payload?.ltp;
-          if (typeof ltp === 'number') {
-            setMarketData(prev => prev.map(item => item.symbol === 'NIFTY' ? { ...item, price: ltp } : item));
+          const fetched = (data as any).data?.data?.fetched || [];
+          const tokenToSymbol: Record<string,string> = {
+            '99926000': 'NIFTY', '99926009': 'BANKNIFTY', '99926037': 'FINNIFTY', '99926017': 'VIX', '99919000': 'SENSEX'
+          };
+          const prices: Record<string,number> = {};
+          for (const row of fetched) {
+            if (row?.symbolToken && typeof row?.ltp === 'number') {
+              const sym = tokenToSymbol[row.symbolToken];
+              if (sym) prices[sym] = row.ltp;
+            }
           }
+          setMarketData(prev => prev.map(item => prices[item.symbol] ? { ...item, price: prices[item.symbol] } : item));
         } else {
           const msg = data?.error || "Failed to fetch market data";
           throw new Error(msg);
         }
       } else {
         const { data, error } = await supabase.functions.invoke('angel-one', {
-          body: { action: 'fetchMarketData' }
+          body: { action: 'fetchMarketData', mode: 'LTP', exchangeTokens }
         });
         if (error) throw error;
-        const resp = data as AngelResponse;
-        if (resp?.success && resp?.data) {
+        const resp = data as any;
+        const ok = resp?.success && resp?.data && (resp?.data?.status ?? true);
+        if (ok) {
           toast({
             title: "Live Data Loaded",
             description: "Successfully fetched live market data from Angel One",
           });
           setLastUpdate(new Date());
-          const ltp = resp?.data?.data?.ltp ?? resp?.data?.data?.last_price ?? resp?.data?.data?.LTP ?? resp?.data?.ltp;
-          if (typeof ltp === 'number') {
-            setMarketData(prev => prev.map(item => item.symbol === 'NIFTY' ? { ...item, price: ltp } : item));
+          const fetched = resp?.data?.data?.fetched || [];
+          const tokenToSymbol: Record<string,string> = {
+            '99926000': 'NIFTY', '99926009': 'BANKNIFTY', '99926037': 'FINNIFTY', '99926017': 'VIX', '99919000': 'SENSEX'
+          };
+          const prices: Record<string,number> = {};
+          for (const row of fetched) {
+            if (row?.symbolToken && typeof row?.ltp === 'number') {
+              const sym = tokenToSymbol[row.symbolToken];
+              if (sym) prices[sym] = row.ltp;
+            }
           }
+          setMarketData(prev => prev.map(item => prices[item.symbol] ? { ...item, price: prices[item.symbol] } : item));
         } else {
           throw new Error(resp?.error || "Failed to fetch market data");
         }
