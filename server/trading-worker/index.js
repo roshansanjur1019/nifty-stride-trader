@@ -6,7 +6,25 @@ const fetch = require('node-fetch')
 const app = express()
 app.use(bodyParser.json())
 
-// Simple health
+// Basic CORS support for browser calls
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.CORS_ALLOW_ORIGIN || '*')
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+  )
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200)
+  }
+  next()
+})
+
+// Simple health + default route
+app.get('/', (req, res) => {
+  res.json({ ok: true, service: 'trading-worker' })
+})
+
 app.get('/health', (req, res) => {
   res.json({ ok: true })
 })
