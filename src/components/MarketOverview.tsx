@@ -76,7 +76,7 @@ const MarketOverview = () => {
         const res = await fetch(`${backendUrl}/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'fetchMarketData', mode: 'LTP', exchangeTokens }),
+          body: JSON.stringify({ action: 'fetchMarketData', mode: 'FULL', exchangeTokens }),
         });
         const data = (await res.json()) as AngelResponse;
         const ok = (data as any).success && (data as any).data && ((data as any).data.status ?? true);
@@ -90,14 +90,38 @@ const MarketOverview = () => {
           const tokenToSymbol: Record<string,string> = {
             '99926000': 'NIFTY', '99926009': 'BANKNIFTY', '99926037': 'FINNIFTY', '99926017': 'VIX', '99919000': 'SENSEX'
           };
-          const prices: Record<string,number> = {};
+          
+          // Map fetched data to symbols with all fields
+          const marketDataMap: Record<string, Partial<MarketData>> = {};
           for (const row of fetched) {
             if (row?.symbolToken && typeof row?.ltp === 'number') {
               const sym = tokenToSymbol[row.symbolToken];
-              if (sym) prices[sym] = row.ltp;
+              if (sym) {
+                marketDataMap[sym] = {
+                  price: row.ltp,
+                  change: typeof row.change === 'number' ? row.change : (row.ltp - (row.close || row.ltp)),
+                  changePercent: typeof row.changePercent === 'number' ? row.changePercent : 
+                    (row.close && row.close > 0 ? ((row.ltp - row.close) / row.close) * 100 : 0),
+                  volume: row.tradeVolume || row.volume || undefined
+                };
+              }
             }
           }
-          setMarketData(prev => prev.map(item => prices[item.symbol] ? { ...item, price: prices[item.symbol] } : item));
+          
+          // Update market data with new values, preserving existing if not found
+          setMarketData(prev => prev.map(item => {
+            const newData = marketDataMap[item.symbol];
+            if (newData) {
+              return {
+                ...item,
+                price: newData.price || item.price,
+                change: newData.change !== undefined ? newData.change : item.change,
+                changePercent: newData.changePercent !== undefined ? newData.changePercent : item.changePercent,
+                volume: newData.volume !== undefined ? newData.volume : item.volume
+              };
+            }
+            return item;
+          }));
         } else {
           const msg = data?.error || "Failed to fetch market data";
           throw new Error(msg);

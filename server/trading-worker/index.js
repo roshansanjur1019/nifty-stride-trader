@@ -1214,9 +1214,9 @@ app.post('/', async (req, res) => {
         return res.status(401).json({ success: false, error: auth.error || 'Authentication failed' })
       }
 
-      // Use SDK wrapper for market data
+      // Use SDK wrapper for market data - use FULL mode to get close price for change calculation
       const marketDataResult = await getMarketData(auth.client, {
-        mode: mode || 'LTP',
+        mode: 'FULL', // Use FULL mode to get close price for change calculation
         exchangeTokens: exchangeTokens || {
           NSE: ['99926000', '99926009', '99926037', '99926017'],
           BSE: ['99919000']
@@ -1230,6 +1230,31 @@ app.post('/', async (req, res) => {
         })
       }
 
+      // Process and enrich data with change calculations
+      const fetched = (marketDataResult.data?.fetched || []).map(item => {
+        const ltp = item.ltp || item.last_price || 0
+        const close = item.close || item.prevClose || ltp // Fallback to LTP if close not available
+        const change = ltp - close
+        const changePercent = close > 0 ? (change / close) * 100 : 0
+
+        const enriched = {
+          ...item,
+          ltp: ltp,
+          close: close,
+          change: change,
+          changePercent: changePercent,
+          // Ensure symbolToken is present for frontend mapping
+          symbolToken: item.symbolToken || item.token
+        }
+
+        // Log for debugging
+        console.log(`[Market Data] ${item.tradingSymbol || item.symbolToken}: LTP=${ltp}, Close=${close}, Change=${change}, Change%=${changePercent.toFixed(2)}`)
+
+        return enriched
+      })
+
+      console.log(`[Market Data] Fetched ${fetched.length} symbols successfully`)
+
       // Format response to match frontend expected structure
       // Frontend expects: data.data.data.fetched
       return res.json({
@@ -1238,7 +1263,7 @@ app.post('/', async (req, res) => {
           status: true,
           message: 'SUCCESS',
           data: {
-            fetched: marketDataResult.data?.fetched || [],
+            fetched: fetched,
             unfetched: marketDataResult.data?.unfetched || []
           }
         }
