@@ -1258,45 +1258,35 @@ let wsConnections = new Map()
 // Old connectOrderWebSocket function removed - now using SDK wrapper (createOrderWebSocket) from angelOneSDK.js
 
 // Initialize WebSocket on startup (if credentials available)
-if (process.env.ANGEL_ONE_API_KEY && process.env.ANGEL_ONE_TOTP_SECRET) {
-  setTimeout(async () => {
-    try {
-      const apiKey = process.env.ANGEL_ONE_API_KEY
-      const clientId = process.env.ANGEL_ONE_CLIENT_ID
-      const password = process.env.ANGEL_ONE_PASSWORD
-      const mpin = process.env.ANGEL_ONE_PASSWORD // Fallback
-      const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
+// Note: WebSocket is optional and only needed for real-time order updates
+// Skip WebSocket initialization to avoid errors - can be enabled later if needed
+// if (process.env.ANGEL_ONE_API_KEY && process.env.ANGEL_ONE_TOTP_SECRET) {
+//   setTimeout(async () => {
+//     try {
+//       const apiKey = process.env.ANGEL_ONE_API_KEY
+//       const clientId = process.env.ANGEL_ONE_CLIENT_ID
+//       const password = process.env.ANGEL_ONE_PASSWORD
+//       const mpin = process.env.ANGEL_ONE_PASSWORD
+//       const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
 
-      // Use SDK wrapper for authentication
-      const auth = await createAuthenticatedClient({
-        apiKey,
-        clientId,
-        password: password || mpin,
-        mpin: mpin,
-        totpSecret
-      })
+//       const auth = await createAuthenticatedClient({
+//         apiKey,
+//         clientId,
+//         password: password || mpin,
+//         mpin: mpin,
+//         totpSecret
+//       })
 
-      if (auth.success && auth.feedToken && auth.client) {
-        const ws = await createOrderWebSocket(
-          {
-            clientCode: clientId,
-            feedToken: auth.feedToken
-          },
-          (data) => {
-            console.log('[WebSocket] Order update:', data)
-            // Handle order updates here
-          }
-        )
-        if (ws) {
-          wsConnections.set('default', ws)
-          console.log('[WebSocket] Order monitoring initialized')
-        }
-      }
-    } catch (error) {
-      console.error('[WebSocket] Initialization error:', error)
-    }
-  }, 5000) // Wait 5 seconds after server start
-}
+//       if (auth.success && auth.feedToken && auth.client) {
+//         // WebSocket initialization disabled - SDK WebSocket has subprotocol issues
+//         // Order updates can be fetched via polling instead
+//         console.log('[WebSocket] Skipping WebSocket initialization (optional)')
+//       }
+//     } catch (error) {
+//       console.error('[WebSocket] Initialization error:', error)
+//     }
+//   }, 5000)
+// }
 
 // Initialize scheduler (only if cron is available)
 let schedulerEnabled = false
@@ -1304,16 +1294,16 @@ try {
   const cron = require('node-cron')
   
   // Entry scheduler for Skyspear Short Strangle (3:10 PM IST daily)
+  // Only runs if users have auto-execute enabled
   cron.schedule('10 15 * * *', async () => {
-    console.log('[Scheduler] Entry time triggered for Short Strangle (3:10 PM IST)')
     try {
       if (!supabase) {
-        console.error('[Scheduler] Supabase client not available')
+        console.log('[Scheduler] Supabase client not available - skipping')
         return
       }
 
       // Get all users with auto-execute enabled for Short Strangle
-      const { data: strategies } = await supabase
+      const { data: strategies, error } = await supabase
         .from('strategy_configs')
         .select('*, user_id')
         .eq('strategy_name', 'Short Strangle')
@@ -1321,10 +1311,17 @@ try {
         .eq('is_active', true)
         .eq('fixed_timing', true)
 
-      if (!strategies || strategies.length === 0) {
-        console.log('[Scheduler] No active Short Strangle strategies found')
+      if (error) {
+        console.error('[Scheduler] Error fetching strategies:', error)
         return
       }
+
+      if (!strategies || strategies.length === 0) {
+        console.log('[Scheduler] No active Short Strangle strategies with auto-execute enabled - skipping')
+        return
+      }
+
+      console.log(`[Scheduler] Entry time triggered for ${strategies.length} user(s) with auto-execute enabled`)
 
       for (const strategy of strategies) {
         // Check if execution run already exists for today
@@ -1357,25 +1354,32 @@ try {
 
   // Exit scheduler for Skyspear Short Strangle (3:00 PM IST next day)
   cron.schedule('0 15 * * *', async () => {
-    console.log('[Scheduler] Exit time triggered for Short Strangle (3:00 PM IST)')
     try {
       if (!supabase) {
-        console.error('[Scheduler] Supabase client not available')
+        console.log('[Scheduler] Supabase client not available - skipping')
         return
       }
 
       // Get all running execution runs for Short Strangle
-      const { data: runningRuns } = await supabase
+      const { data: runningRuns, error } = await supabase
         .from('execution_runs')
-        .select('*, strategy_configs!inner(strategy_name, fixed_timing)')
+        .select('*, strategy_configs!inner(strategy_name, fixed_timing, auto_execute_enabled)')
         .eq('status', 'running')
         .eq('strategy_configs.strategy_name', 'Short Strangle')
         .eq('strategy_configs.fixed_timing', true)
+        .eq('strategy_configs.auto_execute_enabled', true)
+
+      if (error) {
+        console.error('[Scheduler] Error fetching running runs:', error)
+        return
+      }
 
       if (!runningRuns || runningRuns.length === 0) {
         console.log('[Scheduler] No running Short Strangle positions to exit')
         return
       }
+
+      console.log(`[Scheduler] Exit time triggered for ${runningRuns.length} running position(s)`)
 
       for (const run of runningRuns) {
         const result = await executeShortStrangleExit(run.user_id, run.id)
@@ -1392,8 +1396,18 @@ try {
 
   // Monitoring scheduler for other strategies (2:30 PM - 3:25 PM)
   // Trailing SL monitoring (runs every 5 minutes during market hours)
+  // Only runs if users have auto-execute enabled
   cron.schedule('*/5 9-15 * * *', async () => {
-    await monitorTrailingSL()
+    if (!supabase) return
+    // Check if any user has auto-execute enabled before running
+    const { data: strategies } = await supabase
+      .from('strategy_configs')
+      .select('id')
+      .eq('auto_execute_enabled', true)
+      .limit(1)
+    if (strategies && strategies.length > 0) {
+      await monitorTrailingSL()
+    }
   })
 
   // Market intelligence-driven execution (runs every hour during market hours)
@@ -1426,18 +1440,42 @@ try {
   })
 
   cron.schedule('30 14 * * *', async () => {
-    console.log('[Scheduler] Monitoring window started (2:30 PM IST) - Check for profit >= 0.5% exit')
-    await monitorAndExitStrategies({ minProfitPct: 0.5 })
+    if (!supabase) return
+    const { data: strategies } = await supabase
+      .from('strategy_configs')
+      .select('id')
+      .eq('auto_execute_enabled', true)
+      .limit(1)
+    if (strategies && strategies.length > 0) {
+      console.log('[Scheduler] Monitoring window started (2:30 PM IST) - Check for profit >= 0.5% exit')
+      await monitorAndExitStrategies({ minProfitPct: 0.5 })
+    }
   })
 
   cron.schedule('15 15 * * *', async () => {
-    console.log('[Scheduler] Late exit window started (3:15 PM IST) - Check for breakeven/0.3% loss exit')
-    await monitorAndExitStrategies({ breakeven: true, maxLossPct: 0.3 })
+    if (!supabase) return
+    const { data: strategies } = await supabase
+      .from('strategy_configs')
+      .select('id')
+      .eq('auto_execute_enabled', true)
+      .limit(1)
+    if (strategies && strategies.length > 0) {
+      console.log('[Scheduler] Late exit window started (3:15 PM IST) - Check for breakeven/0.3% loss exit')
+      await monitorAndExitStrategies({ breakeven: true, maxLossPct: 0.3 })
+    }
   })
 
   cron.schedule('25 15 * * *', async () => {
-    console.log('[Scheduler] Force exit time (3:25 PM IST) - Force exit all open positions')
-    await forceExitAllStrategies()
+    if (!supabase) return
+    const { data: strategies } = await supabase
+      .from('strategy_configs')
+      .select('id')
+      .eq('auto_execute_enabled', true)
+      .limit(1)
+    if (strategies && strategies.length > 0) {
+      console.log('[Scheduler] Force exit time (3:25 PM IST) - Force exit all open positions')
+      await forceExitAllStrategies()
+    }
   })
 
   schedulerEnabled = true

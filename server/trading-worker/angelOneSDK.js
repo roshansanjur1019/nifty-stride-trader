@@ -42,14 +42,21 @@ async function createAuthenticatedClient(credentials) {
     // If only MPIN is provided, it will still work but password is preferred
     const sessionData = await smartApi.generateSession(clientId, authPassword, totp)
 
-    if (!sessionData || !sessionData.data) {
-      return { success: false, error: 'Authentication failed: Invalid response' }
+    // SDK returns: { status: true, message: 'SUCCESS', data: { jwtToken, refreshToken, feedToken } }
+    // Or might return the data directly
+    if (!sessionData) {
+      return { success: false, error: 'Authentication failed: No response from SDK' }
     }
 
-    const { jwtToken, refreshToken, feedToken } = sessionData.data
+    // Handle both response formats
+    const responseData = sessionData.data || sessionData
+    const jwtToken = responseData.jwtToken || responseData.access_token
+    const refreshToken = responseData.refreshToken || responseData.refresh_token
+    const feedToken = responseData.feedToken || responseData.feed_token
 
     if (!jwtToken) {
-      return { success: false, error: 'Authentication failed: No JWT token received' }
+      console.error('[SDK] Authentication response:', JSON.stringify(sessionData, null, 2))
+      return { success: false, error: 'Authentication failed: No JWT token received. Check credentials and TOTP.' }
     }
 
     // SDK automatically stores tokens in instance properties when generateSession is called
