@@ -6,12 +6,13 @@
   "private": true,
   "license": "MIT",
   "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "base32": "^0.0.7",
     "body-parser": "^1.20.3",
     "express": "^4.19.2",
-    "node-fetch": "^2.7.0",
     "node-cron": "^3.0.3",
-    "@supabase/supabase-js": "^2.57.4",
+    "node-fetch": "^2.7.0",
+    "smartapi-javascript": "^1.0.27",
     "ws": "^8.18.0"
   }
 }
-

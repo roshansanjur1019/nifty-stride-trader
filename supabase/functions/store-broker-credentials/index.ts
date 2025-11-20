@@ -78,7 +78,7 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { apiKey, apiSecret, brokerType } = await req.json();
+    const { apiKey, apiSecret, brokerType, clientId, mpin, totpSecret, publicIp, localIp, macAddress } = await req.json();
 
     // Validate inputs
     if (!apiKey || !apiSecret || !brokerType) {
@@ -97,23 +97,63 @@ serve(async (req) => {
       throw new Error('Invalid API secret length');
     }
 
-    console.log('Encrypting credentials for user:', user.id);
+    // For Angel One, validate additional required fields
+    if (brokerType === 'angel_one') {
+      if (!clientId || !mpin || !totpSecret) {
+        throw new Error('Angel One requires: clientId, mpin, and totpSecret');
+      }
+      if (clientId.length < 5 || clientId.length > 50) {
+        throw new Error('Invalid Client ID length');
+      }
+      if (mpin.length !== 4) {
+        throw new Error('MPIN must be 4 digits');
+      }
+      if (totpSecret.length < 10) {
+        throw new Error('Invalid TOTP secret length');
+      }
+    }
+
+    console.log('Encrypting credentials for user:', user.id, 'broker:', brokerType);
 
     // Encrypt credentials
     const encryptedApiKey = await encryptCredential(apiKey);
     const encryptedApiSecret = await encryptCredential(apiSecret);
+    
+    // For Angel One, encrypt additional fields
+    let encryptedClientId = null;
+    let encryptedMpin = null;
+    let encryptedTotpSecret = null;
+    
+    if (brokerType === 'angel_one') {
+      encryptedClientId = await encryptCredential(clientId);
+      encryptedMpin = await encryptCredential(mpin);
+      encryptedTotpSecret = await encryptCredential(totpSecret);
+    }
 
     // Store encrypted credentials
+    const insertData: any = {
+      user_id: user.id,
+      broker_type: brokerType,
+      api_key_encrypted: encryptedApiKey,
+      api_secret_encrypted: encryptedApiSecret,
+      is_active: true,
+      last_connected_at: new Date().toISOString(),
+    };
+
+    // Add Angel One specific fields
+    if (brokerType === 'angel_one') {
+      insertData.client_id_encrypted = encryptedClientId;
+      insertData.mpin_encrypted = encryptedMpin;
+      insertData.totp_secret_encrypted = encryptedTotpSecret;
+      // Store IP info for reference (all users use same server IP)
+      insertData.public_ip = publicIp || '98.88.173.81'; // Default to server IP
+      insertData.local_ip = localIp || null;
+      insertData.mac_address = macAddress || null;
+    }
+
     const { data, error } = await supabase
       .from('broker_accounts')
-      .insert({
-        user_id: user.id,
-        broker_type: brokerType,
-        api_key_encrypted: encryptedApiKey,
-        api_secret_encrypted: encryptedApiSecret,
-        is_active: true,
-        last_connected_at: new Date().toISOString(),
-      })
+      .insert(insertData)
       .select()
       .single();
 

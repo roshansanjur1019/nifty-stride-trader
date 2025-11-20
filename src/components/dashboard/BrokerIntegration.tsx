@@ -23,6 +23,9 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
   const [credentials, setCredentials] = useState({
     apiKey: "",
     apiSecret: "",
+    clientId: "",
+    mpin: "",
+    totpSecret: "",
   });
 
   useEffect(() => {
@@ -53,12 +56,26 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
       });
 
       // Call secure edge function to encrypt and store credentials
-      const { data, error } = await supabase.functions.invoke('store-broker-credentials', {
-        body: {
-          apiKey: validatedData.apiKey,
-          apiSecret: validatedData.apiSecret,
-          brokerType: validatedData.brokerType,
+      const requestBody: any = {
+        apiKey: validatedData.apiKey,
+        apiSecret: validatedData.apiSecret,
+        brokerType: validatedData.brokerType,
+      };
+
+      // Add Angel One specific fields
+      if (selectedBroker === 'angel_one') {
+        if (!credentials.clientId || !credentials.mpin || !credentials.totpSecret) {
+          throw new Error('Angel One requires: Client ID, MPIN, and TOTP Secret');
         }
+        requestBody.clientId = credentials.clientId;
+        requestBody.mpin = credentials.mpin;
+        requestBody.totpSecret = credentials.totpSecret;
+        // Server IP that users need to whitelist
+        requestBody.publicIp = '98.88.173.81';
+      }
+
+      const { data, error } = await supabase.functions.invoke('store-broker-credentials', {
+        body: requestBody
       });
 
       if (error) throw error;
@@ -69,7 +86,7 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
         description: `${selectedBroker === "zerodha" ? "Zerodha" : "Angel One"} has been connected successfully with encrypted storage.`,
       });
 
-      setCredentials({ apiKey: "", apiSecret: "" });
+      setCredentials({ apiKey: "", apiSecret: "", clientId: "", mpin: "", totpSecret: "" });
       setShowAddForm(false);
       fetchBrokers();
     } catch (error: any) {
@@ -216,6 +233,75 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
                   required
                 />
               </div>
+
+              {/* Angel One Specific Fields */}
+              {selectedBroker === "angel_one" && (
+                <>
+                  <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg">
+                    <div className="text-sm font-semibold mb-2 text-warning">⚠️ Important: IP Whitelisting Required</div>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Before connecting, you must whitelist our server IP in your Angel One SmartAPI dashboard:
+                    </p>
+                    <div className="bg-background p-2 rounded border font-mono text-sm">
+                      IP Address: <span className="font-bold text-primary">98.88.173.81</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Go to SmartAPI Dashboard → Your App → IP Whitelisting → Add this IP
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="clientId">Client ID</Label>
+                    <Input
+                      id="clientId"
+                      type="text"
+                      value={credentials.clientId}
+                      onChange={(e) => setCredentials({ ...credentials, clientId: e.target.value })}
+                      placeholder="Your Angel One Client ID"
+                      required={selectedBroker === "angel_one"}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="mpin">MPIN (4 digits)</Label>
+                    <Input
+                      id="mpin"
+                      type="password"
+                      maxLength={4}
+                      value={credentials.mpin}
+                      onChange={(e) => setCredentials({ ...credentials, mpin: e.target.value.replace(/\D/g, '') })}
+                      placeholder="0000"
+                      required={selectedBroker === "angel_one"}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="totpSecret">TOTP Secret (Base32)</Label>
+                    <Input
+                      id="totpSecret"
+                      type="text"
+                      value={credentials.totpSecret}
+                      onChange={(e) => setCredentials({ ...credentials, totpSecret: e.target.value.toUpperCase() })}
+                      placeholder="ABCD1234EFGH5678"
+                      required={selectedBroker === "angel_one"}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Found in your SmartAPI app settings
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Zerodha OAuth Note */}
+              {selectedBroker === "zerodha" && (
+                <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg">
+                  <div className="text-sm font-semibold mb-1">Zerodha Kite Connect</div>
+                  <p className="text-xs text-muted-foreground">
+                    Zerodha uses OAuth authentication. No IP whitelisting required. 
+                    You'll be redirected to Zerodha for authorization.
+                  </p>
+                </div>
+              )}
 
               <div className="flex space-x-2">
                 <Button type="submit">Connect Broker</Button>

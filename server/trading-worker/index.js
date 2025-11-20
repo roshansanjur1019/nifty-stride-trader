@@ -1,9 +1,19 @@
 const express = require('express')
 const bodyParser = require('body-parser')
 const crypto = require('crypto')
-const fetch = require('node-fetch')
 const cron = require('node-cron')
 const { createClient } = require('@supabase/supabase-js')
+const {
+  createAuthenticatedClient,
+  getMarketData,
+  getBrokerFunds,
+  placeOrder,
+  cancelOrder,
+  getOrderBook,
+  getTradeBook,
+  getOptionChain,
+  createOrderWebSocket
+} = require('./angelOneSDK')
 
 const app = express()
 app.use(bodyParser.json())
@@ -11,7 +21,120 @@ app.use(bodyParser.json())
 // Supabase client for database access
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://blnphqmmsjlxlqnrmriw.supabase.co'
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || ''
 const supabase = SUPABASE_SERVICE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY) : null
+
+// Server IP that all users must whitelist (same for all users)
+const SERVER_PUBLIC_IP = process.env.ANGEL_ONE_PUBLIC_IP || '98.88.173.81'
+const SERVER_LOCAL_IP = process.env.ANGEL_ONE_LOCAL_IP || '172.31.26.44'
+const SERVER_MAC_ADDRESS = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
+
+// ===== CREDENTIAL DECRYPTION =====
+// Decrypt credentials using same method as Supabase function
+async function decryptCredential(encryptedCredential) {
+  try {
+    if (!encryptedCredential) return null
+
+    // Decode base64
+    const combined = Uint8Array.from(atob(encryptedCredential), c => c.charCodeAt(0))
+    
+    // Extract IV (first 12 bytes) and encrypted data
+    const iv = combined.slice(0, 12)
+    const encryptedData = combined.slice(12)
+
+    // Derive key from JWT secret (same as encryption)
+    const encoder = new TextEncoder()
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(SUPABASE_JWT_SECRET),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveKey']
+    )
+
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: encoder.encode('skyspear-broker-salt'),
+        iterations: 100000,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    )
+
+    // Decrypt
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      encryptedData
+    )
+
+    return new TextDecoder().decode(decrypted)
+  } catch (error) {
+    console.error('Decryption error:', error)
+    return null
+  }
+}
+
+// Fetch and decrypt user's broker credentials
+async function getUserBrokerCredentials(userId, brokerType = 'angel_one') {
+  try {
+    if (!supabase) {
+      throw new Error('Supabase client not initialized')
+    }
+
+    const { data: brokerAccount, error } = await supabase
+      .from('broker_accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('broker_type', brokerType)
+      .eq('is_active', true)
+      .single()
+
+    if (error || !brokerAccount) {
+      throw new Error('No active broker account found')
+    }
+
+    // Decrypt credentials
+    const apiKey = await decryptCredential(brokerAccount.api_key_encrypted)
+    const apiSecret = await decryptCredential(brokerAccount.api_secret_encrypted)
+    
+    if (brokerType === 'angel_one') {
+      const clientId = await decryptCredential(brokerAccount.client_id_encrypted)
+      const mpin = await decryptCredential(brokerAccount.mpin_encrypted)
+      const totpSecret = await decryptCredential(brokerAccount.totp_secret_encrypted)
+
+      if (!apiKey || !clientId || !mpin || !totpSecret) {
+        throw new Error('Failed to decrypt broker credentials')
+      }
+
+      return {
+        apiKey,
+        apiSecret,
+        clientId,
+        mpin,
+        totpSecret,
+        // All users use same server IP (whitelisted by each user)
+        publicIp: SERVER_PUBLIC_IP,
+        localIp: SERVER_LOCAL_IP,
+        macAddress: SERVER_MAC_ADDRESS
+      }
+    }
+
+    // For Zerodha (OAuth-based, no IP needed)
+    return {
+      apiKey,
+      apiSecret,
+      accessToken: brokerAccount.access_token_encrypted ? await decryptCredential(brokerAccount.access_token_encrypted) : null
+    }
+  } catch (error) {
+    console.error('Error fetching user broker credentials:', error)
+    throw error
+  }
+}
 
 // Lot sizes configuration
 const LOT_SIZES = {
@@ -71,39 +194,40 @@ app.post('/precheck', async (req, res) => {
     let marketConditions = null
 
     try {
-      const apiKey = process.env.ANGEL_ONE_API_KEY
-      const clientId = process.env.ANGEL_ONE_CLIENT_ID
-      const mpin = process.env.ANGEL_ONE_PASSWORD
-      const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-      const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-      const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-      const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
-
-      if (apiKey && clientId && mpin && totpSecret) {
-        const auth = await authenticateAngelOne({
-          apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
+      // Fetch user's own broker credentials from database
+      const userCredentials = await getUserBrokerCredentials(userId, 'angel_one')
+      
+      if (userCredentials) {
+        // Use SDK wrapper for authentication (uses loginByPassword)
+        const auth = await createAuthenticatedClient({
+          apiKey: userCredentials.apiKey,
+          clientId: userCredentials.clientId,
+          password: userCredentials.password, // Preferred
+          mpin: userCredentials.mpin,        // Fallback
+          totpSecret: userCredentials.totpSecret
         })
 
-        if (auth.success && auth.token) {
-          const marketData = await fetchMarketData({
-            token: auth.token,
-            apiKey, clientId, publicIp, localIp, macAddress,
+        if (auth.success && auth.client) {
+          const marketDataResult = await getMarketData(auth.client, {
             mode: 'LTP',
             exchangeTokens: {
               NSE: ['99926000', '99926017'] // NIFTY and VIX
             }
           })
 
-          const vixData = marketData?.data?.fetched?.find(d => d.symbolToken === '99926017')
-          const niftyData = marketData?.data?.fetched?.find(d => d.symbolToken === '99926000')
-          vix = vixData?.ltp || 15
-          niftySpot = niftyData?.ltp || 24750
+          if (marketDataResult.success) {
+            const marketData = marketDataResult.data
+            const vixData = marketData?.fetched?.find(d => d.symbolToken === '99926017')
+            const niftyData = marketData?.fetched?.find(d => d.symbolToken === '99926000')
+            vix = vixData?.ltp || 15
+            niftySpot = niftyData?.ltp || 24750
 
-          marketConditions = {
-            vix,
-            niftySpot,
-            trend: vix > 20 ? 'volatile' : vix < 15 ? 'stable' : 'normal',
-            volatilityLevel: vix > 20 ? 'high' : vix < 15 ? 'low' : 'medium'
+            marketConditions = {
+              vix,
+              niftySpot,
+              trend: vix > 20 ? 'volatile' : vix < 15 ? 'stable' : 'normal',
+              volatilityLevel: vix > 20 ? 'high' : vix < 15 ? 'low' : 'medium'
+            }
           }
         }
       }
@@ -123,20 +247,25 @@ app.post('/precheck', async (req, res) => {
     const baseStrikeGap = 250
     const strikeGap = vix > 20 ? 400 : vix < 15 ? 200 : baseStrikeGap
 
-    // Fetch actual available funds from Angel One API
+    // Fetch actual available funds from Angel One API using user's credentials
     let availableFunds = totalCapital * 0.8 // Default fallback
     try {
-      if (apiKey && clientId && mpin && totpSecret) {
-        const auth = await authenticateAngelOne({
-          apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
-        })
-        if (auth.success && auth.token) {
-          const funds = await getBrokerFunds({
-            token: auth.token,
-            apiKey, clientId, publicIp, localIp, macAddress
+      if (brokerAccount) {
+        const userCredentials = await getUserBrokerCredentials(userId, 'angel_one')
+        if (userCredentials) {
+          // Use SDK wrapper for authentication
+          const auth = await createAuthenticatedClient({
+            apiKey: userCredentials.apiKey,
+            clientId: userCredentials.clientId,
+            password: userCredentials.password,
+            mpin: userCredentials.mpin,
+            totpSecret: userCredentials.totpSecret
           })
-          if (funds.success) {
-            availableFunds = funds.availableFunds || availableFunds
+          if (auth.success && auth.client) {
+            const funds = await getBrokerFunds(auth.client)
+            if (funds.success) {
+              availableFunds = funds.availableFunds || availableFunds
+            }
           }
         }
       }
@@ -191,176 +320,52 @@ function base32ToBytes (base32) {
   return Buffer.from(bytes)
 }
 
-// Generate TOTP code (30s window, 6 digits)
-function generateTOTP (secret) {
-  const epoch = Math.floor(Date.now() / 1000)
-  const counter = Math.floor(epoch / 30)
-
-  const buffer = Buffer.alloc(8)
-  buffer.writeBigUInt64BE(BigInt(counter), 0)
-
-  const keyBytes = base32ToBytes(secret)
-  const hmac = crypto.createHmac('sha1', keyBytes)
-  hmac.update(buffer)
-  const hash = hmac.digest()
-
-  const offset = hash[hash.length - 1] & 0xf
-  const code =
-    ((hash[offset] & 0x7f) << 24) |
-    ((hash[offset + 1] & 0xff) << 16) |
-    ((hash[offset + 2] & 0xff) << 8) |
-    (hash[offset + 3] & 0xff)
-
-  return String(code % 1000000).padStart(6, '0')
-}
-
-async function authenticateAngelOne ({
-  apiKey,
-  clientId,
-  mpin,
-  totpSecret,
-  publicIp,
-  localIp,
-  macAddress,
-}) {
-  try {
-    console.log('=== Angel One Authentication Attempt (AWS backend) ===')
-    console.log('Public IP header:', publicIp)
-    console.log('Local IP header:', localIp)
-    console.log('MAC Address header:', macAddress)
-    console.log('Client ID:', clientId)
-
-    const totp = generateTOTP(totpSecret)
-    console.log('Generated TOTP:', totp)
-
-    const response = await fetch('https://apiconnect.angelbroking.com/rest/auth/angelbroking/user/v1/loginByMpin', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'X-UserType': 'USER',
-        'X-SourceID': 'WEB',
-        'X-ClientLocalIP': localIp,
-        'X-ClientPublicIP': publicIp,
-        'X-MACAddress': macAddress,
-        'X-PrivateKey': apiKey,
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
-      body: JSON.stringify({
-        clientcode: clientId,
-        mpin,
-        totp,
-      }),
-    })
-
-    const contentType = response.headers.get('content-type')
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text()
-      console.error('Non-JSON auth response from Angel One:', text.substring(0, 400))
-      return { success: false, error: `Non-JSON response from Angel One auth. Status: ${response.status}` }
-    }
-
-    const data = await response.json()
-    console.log('Angel One auth response:', data)
-
-    if (data?.status && data?.data?.jwtToken) {
-      return { success: true, token: data.data.jwtToken, feedToken: data.data.feedToken }
-    }
-
-    return { success: false, error: data?.message || 'Authentication failed' }
-  } catch (err) {
-    console.error('Angel One authentication error:', err)
-    return { success: false, error: err.message || 'Unknown error' }
-  }
-}
-
-async function fetchMarketData ({
-  token,
-  apiKey,
-  clientId,
-  publicIp,
-  localIp,
-  macAddress,
-  mode,
-  exchangeTokens,
-}) {
-  try {
-    const resolvedMode = mode || 'LTP'
-    const resolvedExchangeTokens =
-      exchangeTokens || { NSE: ['99926000', '99926009', '99926037', '99926017'], BSE: ['99919000'] }
-
-    const response = await fetch(
-      'https://apiconnect.angelbroking.com/rest/secure/angelbroking/market/v1/quote/',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
-          'X-UserType': 'USER',
-          'X-SourceID': 'WEB',
-          'X-ClientLocalIP': localIp,
-          'X-ClientPublicIP': publicIp,
-          'X-MACAddress': macAddress,
-          'X-PrivateKey': apiKey,
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-        body: JSON.stringify({ mode: resolvedMode, exchangeTokens: resolvedExchangeTokens }),
-      }
-    )
-
-    const contentType = response.headers.get('content-type') || ''
-    if (!contentType.includes('application/json')) {
-      const text = await response.text()
-      console.error('Non-JSON market data response from Angel One:', text.substring(0, 400))
-      return { status: false, message: 'Non-JSON response', raw: text }
-    }
-
-    const data = await response.json()
-    console.log('Angel One market data response:', data)
-    return data
-  } catch (err) {
-    console.error('Error fetching market data from Angel One:', err)
-    throw err
-  }
-}
+// ===== ANGEL ONE SDK WRAPPER =====
+// All Angel One API calls now use the official SDK wrapper
+// This uses loginByPassword (recommended by Angel One) instead of loginByMpin
 
 // ===== MARKET INTELLIGENCE MODULE =====
 async function analyzeMarketIntelligence() {
   try {
+    // Use platform credentials for market intelligence
     const apiKey = process.env.ANGEL_ONE_API_KEY
     const clientId = process.env.ANGEL_ONE_CLIENT_ID
-    const mpin = process.env.ANGEL_ONE_PASSWORD
+    const password = process.env.ANGEL_ONE_PASSWORD
+    const mpin = process.env.ANGEL_ONE_PASSWORD // Fallback
     const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-    const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-    const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-    const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
 
-    if (!apiKey || !clientId || !mpin || !totpSecret) {
+    if (!apiKey || !clientId || !totpSecret || (!password && !mpin)) {
       return { conditions: null, recommendations: [], error: 'Missing Angel One credentials' }
     }
 
-    const auth = await authenticateAngelOne({
-      apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
+    // Use SDK wrapper for authentication
+    const auth = await createAuthenticatedClient({
+      apiKey,
+      clientId,
+      password: password || mpin,
+      mpin: mpin,
+      totpSecret
     })
 
-    if (!auth.success) {
-      return { conditions: null, recommendations: [], error: 'Authentication failed' }
+    if (!auth.success || !auth.client) {
+      return { conditions: null, recommendations: [], error: auth.error || 'Authentication failed' }
     }
 
-    const marketData = await fetchMarketData({
-      token: auth.token,
-      apiKey, clientId, publicIp, localIp, macAddress,
+    // Use SDK wrapper for market data
+    const marketDataResult = await getMarketData(auth.client, {
       mode: 'LTP',
       exchangeTokens: {
         NSE: ['99926000', '99926017'] // NIFTY and VIX
       }
     })
 
-    const vixData = marketData?.data?.fetched?.find(d => d.symbolToken === '99926017')
-    const niftyData = marketData?.data?.fetched?.find(d => d.symbolToken === '99926000')
+    if (!marketDataResult.success) {
+      return { conditions: null, recommendations: [], error: marketDataResult.error }
+    }
+
+    const marketData = marketDataResult.data
+    const vixData = marketData?.fetched?.find(d => d.symbolToken === '99926017')
+    const niftyData = marketData?.fetched?.find(d => d.symbolToken === '99926000')
     const vix = vixData?.ltp || 15
     const niftySpot = niftyData?.ltp || 24750
 
@@ -707,46 +712,35 @@ async function executeShortStrangleEntry(userId, strategyConfig) {
       throw new Error('Supabase client not initialized')
     }
 
-    // Get broker account
-    const { data: brokerAccount } = await supabase
-      .from('broker_accounts')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .eq('broker_type', 'angel_one')
-      .single()
+    // Get user's broker credentials from database
+    const userCredentials = await getUserBrokerCredentials(userId, 'angel_one')
 
-    if (!brokerAccount) {
-      throw new Error('No active broker account found')
-    }
-
-    // Authenticate
-    const apiKey = process.env.ANGEL_ONE_API_KEY
-    const clientId = process.env.ANGEL_ONE_CLIENT_ID
-    const mpin = process.env.ANGEL_ONE_PASSWORD
-    const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-    const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-    const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-    const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
-
-    const auth = await authenticateAngelOne({
-      apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
+    // Authenticate using SDK wrapper (uses loginByPassword)
+    const auth = await createAuthenticatedClient({
+      apiKey: userCredentials.apiKey,
+      clientId: userCredentials.clientId,
+      password: userCredentials.password,
+      mpin: userCredentials.mpin,
+      totpSecret: userCredentials.totpSecret
     })
 
-    if (!auth.success) {
-      throw new Error('Authentication failed')
+    if (!auth.success || !auth.client) {
+      throw new Error(auth.error || 'Authentication failed')
     }
 
-    // Get market data
-    const marketData = await fetchMarketData({
-      token: auth.token,
-      apiKey, clientId, publicIp, localIp, macAddress,
+    // Get market data using SDK
+    const marketDataResult = await getMarketData(auth.client, {
       mode: 'LTP',
       exchangeTokens: { NSE: ['99926000', '99926017'] }
     })
 
-    const vix = marketData?.data?.fetched?.find(d => d.symbolToken === '99926017')?.ltp || 15
-    const niftySpot = marketData?.data?.fetched?.find(d => d.symbolToken === '99926000')?.ltp || 24750
+    if (!marketDataResult.success) {
+      throw new Error(marketDataResult.error || 'Failed to fetch market data')
+    }
+
+    const marketData = marketDataResult.data
+    const vix = marketData?.fetched?.find(d => d.symbolToken === '99926017')?.ltp || 15
+    const niftySpot = marketData?.fetched?.find(d => d.symbolToken === '99926000')?.ltp || 24750
 
     // Calculate strike gap
     const baseStrikeGap = strategyConfig.strike_gap_points || 250
@@ -768,12 +762,7 @@ async function executeShortStrangleEntry(userId, strategyConfig) {
       expiryDate.setDate(today.getDate() + daysUntilThursday)
       const expiryStr = expiryDate.toISOString().split('T')[0]
 
-      const optionChain = await getOptionChain({
-        token: auth.token,
-        apiKey, clientId, publicIp, localIp, macAddress,
-        symbol: 'NIFTY',
-        expiryDate: expiryStr
-      })
+      const optionChain = await getOptionChain(auth.client, 'NIFTY', expiryStr)
 
       if (optionChain.success && optionChain.data?.data) {
         // Find CE with premium >= minPremium
@@ -794,12 +783,7 @@ async function executeShortStrangleEntry(userId, strategyConfig) {
           nextExpiry.setDate(expiryDate.getDate() + 7)
           const nextExpiryStr = nextExpiry.toISOString().split('T')[0]
 
-          const nextWeekChain = await getOptionChain({
-            token: auth.token,
-            apiKey, clientId, publicIp, localIp, macAddress,
-            symbol: 'NIFTY',
-            expiryDate: nextExpiryStr
-          })
+          const nextWeekChain = await getOptionChain(auth.client, 'NIFTY', nextExpiryStr)
 
           if (nextWeekChain.success && nextWeekChain.data?.data) {
             const nextCEOptions = nextWeekChain.data.data.filter(opt => 
@@ -850,44 +834,36 @@ async function executeShortStrangleEntry(userId, strategyConfig) {
     const lotSize = strategyConfig.lot_size || 1
     const lotSizeValue = LOT_SIZES.NIFTY
 
-    // Place CE sell order
-    const ceOrder = await placeOrder({
-      token: auth.token,
-      apiKey, clientId, publicIp, localIp, macAddress,
-      orderParams: {
-        variety: 'NORMAL',
-        tradingsymbol: selectedCE.tradingsymbol || `NIFTY${selectedCE.strikeprice}CE`,
-        symboltoken: selectedCE.symboltoken,
-        transactiontype: 'SELL',
-        exchange: 'NFO',
-        ordertype: 'LIMIT',
-        producttype: 'MIS',
-        duration: 'DAY',
-        price: selectedCE.ltp || 0,
-        squareoff: '0',
-        stoploss: '0',
-        quantity: lotSizeValue * lotSize
-      }
+    // Place CE sell order using SDK
+    const ceOrder = await placeOrder(auth.client, {
+      variety: 'NORMAL',
+      tradingsymbol: selectedCE.tradingsymbol || `NIFTY${selectedCE.strikeprice}CE`,
+      symboltoken: selectedCE.symboltoken,
+      transactiontype: 'SELL',
+      exchange: 'NFO',
+      ordertype: 'LIMIT',
+      producttype: 'MIS',
+      duration: 'DAY',
+      price: selectedCE.ltp || 0,
+      squareoff: '0',
+      stoploss: '0',
+      quantity: String(lotSizeValue * lotSize)
     })
 
-    // Place PE sell order
-    const peOrder = await placeOrder({
-      token: auth.token,
-      apiKey, clientId, publicIp, localIp, macAddress,
-      orderParams: {
-        variety: 'NORMAL',
-        tradingsymbol: selectedPE.tradingsymbol || `NIFTY${selectedPE.strikeprice}PE`,
-        symboltoken: selectedPE.symboltoken,
-        transactiontype: 'SELL',
-        exchange: 'NFO',
-        ordertype: 'LIMIT',
-        producttype: 'MIS',
-        duration: 'DAY',
-        price: selectedPE.ltp || 0,
-        squareoff: '0',
-        stoploss: '0',
-        quantity: lotSizeValue * lotSize
-      }
+    // Place PE sell order using SDK
+    const peOrder = await placeOrder(auth.client, {
+      variety: 'NORMAL',
+      tradingsymbol: selectedPE.tradingsymbol || `NIFTY${selectedPE.strikeprice}PE`,
+      symboltoken: selectedPE.symboltoken,
+      transactiontype: 'SELL',
+      exchange: 'NFO',
+      ordertype: 'LIMIT',
+      producttype: 'MIS',
+      duration: 'DAY',
+      price: selectedPE.ltp || 0,
+      squareoff: '0',
+      stoploss: '0',
+      quantity: String(lotSizeValue * lotSize)
     })
 
     // Create trade record
@@ -988,21 +964,20 @@ async function executeShortStrangleExit(userId, executionRunId) {
       return { success: true }
     }
 
-    // Authenticate for order placement
-    const apiKey = process.env.ANGEL_ONE_API_KEY
-    const clientId = process.env.ANGEL_ONE_CLIENT_ID
-    const mpin = process.env.ANGEL_ONE_PASSWORD
-    const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-    const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-    const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-    const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
+    // Get user's broker credentials for exit
+    const userCredentials = await getUserBrokerCredentials(userId, 'angel_one')
 
-    const auth = await authenticateAngelOne({
-      apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
+    // Authenticate using SDK wrapper
+    const auth = await createAuthenticatedClient({
+      apiKey: userCredentials.apiKey,
+      clientId: userCredentials.clientId,
+      password: userCredentials.password,
+      mpin: userCredentials.mpin,
+      totpSecret: userCredentials.totpSecret
     })
 
-    if (!auth.success) {
-      throw new Error('Authentication failed')
+    if (!auth.success || !auth.client) {
+      throw new Error(auth.error || 'Authentication failed')
     }
 
     // Close all legs at market
@@ -1012,7 +987,11 @@ async function executeShortStrangleExit(userId, executionRunId) {
           // Get current market price for the leg
           const currentPrice = await fetchMarketData({
             token: auth.token,
-            apiKey, clientId, publicIp, localIp, macAddress,
+            apiKey: userCredentials.apiKey,
+            clientId: userCredentials.clientId,
+            publicIp: userCredentials.publicIp,
+            localIp: userCredentials.localIp,
+            macAddress: userCredentials.macAddress,
             mode: 'LTP',
             exchangeTokens: {
               NFO: [leg.symboltoken || ''] // Need to store symboltoken in trade_legs
@@ -1021,10 +1000,14 @@ async function executeShortStrangleExit(userId, executionRunId) {
 
           const ltp = currentPrice?.data?.fetched?.[0]?.ltp || leg.entry_price
 
-          // Place market order to close (opposite transaction)
+          // Place market order to close using user's credentials
           const closeOrder = await placeOrder({
             token: auth.token,
-            apiKey, clientId, publicIp, localIp, macAddress,
+            apiKey: userCredentials.apiKey,
+            clientId: userCredentials.clientId,
+            publicIp: userCredentials.publicIp,
+            localIp: userCredentials.localIp,
+            macAddress: userCredentials.macAddress,
             orderParams: {
               variety: 'NORMAL',
               tradingsymbol: leg.tradingsymbol || '',
@@ -1095,21 +1078,32 @@ async function monitorTrailingSL() {
 
     if (!runningRuns || runningRuns.length === 0) return
 
-    const apiKey = process.env.ANGEL_ONE_API_KEY
-    const clientId = process.env.ANGEL_ONE_CLIENT_ID
-    const mpin = process.env.ANGEL_ONE_PASSWORD
-    const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-    const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-    const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-    const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
-
-    const auth = await authenticateAngelOne({
-      apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
-    })
-
-    if (!auth.success) return
-
+    // Process each user's trades with their own credentials
     for (const run of runningRuns) {
+      // Get user's broker credentials
+      let userCredentials
+      try {
+        userCredentials = await getUserBrokerCredentials(run.user_id, 'angel_one')
+      } catch (error) {
+        console.error(`[Trailing SL] Failed to get credentials for user ${run.user_id}:`, error)
+        continue
+      }
+
+      // Authenticate using user's credentials
+      const auth = await authenticateAngelOne({
+        apiKey: userCredentials.apiKey,
+        clientId: userCredentials.clientId,
+        mpin: userCredentials.mpin,
+        totpSecret: userCredentials.totpSecret,
+        publicIp: userCredentials.publicIp,
+        localIp: userCredentials.localIp,
+        macAddress: userCredentials.macAddress
+      })
+
+      if (!auth.success) {
+        console.error(`[Trailing SL] Auth failed for user ${run.user_id}`)
+        continue
+      }
       const { data: trades } = await supabase
         .from('trades')
         .select('*, trade_legs(*)')
@@ -1127,7 +1121,11 @@ async function monitorTrailingSL() {
         if (symbolTokens.length > 0) {
           const currentPrices = await fetchMarketData({
             token: auth.token,
-            apiKey, clientId, publicIp, localIp, macAddress,
+            apiKey: userCredentials.apiKey,
+            clientId: userCredentials.clientId,
+            publicIp: userCredentials.publicIp,
+            localIp: userCredentials.localIp,
+            macAddress: userCredentials.macAddress,
             mode: 'LTP',
             exchangeTokens: { NFO: symbolTokens }
           })
@@ -1155,12 +1153,16 @@ async function monitorTrailingSL() {
 
           // Check if trailing SL hit
           if (shouldExitOnTrailingSL(currentProfitPct, trailingSLPct)) {
-            // Exit the position
+            // Exit the position using user's credentials
             for (const leg of trade.trade_legs || []) {
               if (leg.exit_price === null) {
                 await placeOrder({
                   token: auth.token,
-                  apiKey, clientId, publicIp, localIp, macAddress,
+                  apiKey: userCredentials.apiKey,
+                  clientId: userCredentials.clientId,
+                  publicIp: userCredentials.publicIp,
+                  localIp: userCredentials.localIp,
+                  macAddress: userCredentials.macAddress,
                   orderParams: {
                     variety: 'NORMAL',
                     tradingsymbol: leg.tradingsymbol || '',
@@ -1234,16 +1236,20 @@ async function monitorAndExitStrategies({ minProfitPct, breakeven, maxLossPct })
           apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
         })
 
-        if (auth.success && auth.token) {
-          // Fetch current prices for all legs
-          const symbolTokens = (trade.trade_legs || []).map(leg => leg.symboltoken).filter(Boolean)
-          if (symbolTokens.length > 0) {
-            const currentPrices = await fetchMarketData({
-              token: auth.token,
-              apiKey, clientId, publicIp, localIp, macAddress,
-              mode: 'LTP',
-              exchangeTokens: { NFO: symbolTokens }
-            })
+          if (auth.success && auth.token) {
+            // Fetch current prices for all legs using user's credentials
+            const symbolTokens = (trade.trade_legs || []).map(leg => leg.symboltoken).filter(Boolean)
+            if (symbolTokens.length > 0) {
+              const currentPrices = await fetchMarketData({
+                token: auth.token,
+                apiKey: userCredentials.apiKey,
+                clientId: userCredentials.clientId,
+                publicIp: userCredentials.publicIp,
+                localIp: userCredentials.localIp,
+                macAddress: userCredentials.macAddress,
+                mode: 'LTP',
+                exchangeTokens: { NFO: symbolTokens }
+              })
 
             for (const leg of trade.trade_legs || []) {
               const currentPrice = currentPrices?.data?.fetched?.find(p => p.symboltoken === leg.symboltoken)?.ltp
@@ -1273,25 +1279,19 @@ async function monitorAndExitStrategies({ minProfitPct, breakeven, maxLossPct })
         }
 
         if (shouldExit) {
-          // Execute exit - place market orders to close positions
-          const apiKey = process.env.ANGEL_ONE_API_KEY
-          const clientId = process.env.ANGEL_ONE_CLIENT_ID
-          const mpin = process.env.ANGEL_ONE_PASSWORD
-          const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-          const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-          const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-          const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
-
-          const auth = await authenticateAngelOne({
-            apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
-          })
+          // Execute exit - place market orders to close positions using user's credentials
+          // (auth already established above)
 
           if (auth.success && auth.token) {
             for (const leg of trade.trade_legs || []) {
               if (leg.exit_price === null) {
                 await placeOrder({
                   token: auth.token,
-                  apiKey, clientId, publicIp, localIp, macAddress,
+                  apiKey: userCredentials.apiKey,
+                  clientId: userCredentials.clientId,
+                  publicIp: userCredentials.publicIp,
+                  localIp: userCredentials.localIp,
+                  macAddress: userCredentials.macAddress,
                   orderParams: {
                     variety: 'NORMAL',
                     tradingsymbol: leg.tradingsymbol || '',
@@ -1357,47 +1357,60 @@ app.post('/', async (req, res) => {
   }
 
   if (action === 'fetchMarketData') {
+    // For landing page - use platform credentials from environment
     const apiKey = process.env.ANGEL_ONE_API_KEY
-    const apiSecret = process.env.ANGEL_ONE_API_SECRET // currently unused but kept for parity
     const clientId = process.env.ANGEL_ONE_CLIENT_ID
-    const mpin = process.env.ANGEL_ONE_PASSWORD
+    const password = process.env.ANGEL_ONE_PASSWORD // Use password (preferred)
+    const mpin = process.env.ANGEL_ONE_PASSWORD // Fallback to MPIN if password not set
     const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
 
-    if (!apiKey || !apiSecret || !clientId || !mpin || !totpSecret) {
+    if (!apiKey || !clientId || !totpSecret || (!password && !mpin)) {
       return res.status(500).json({ success: false, error: 'Missing Angel One credentials on backend' })
     }
 
-    // Use whitelisted IP/MAC if provided; otherwise fall back to placeholders
-    const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || req.ip || '127.0.0.1'
-    const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-    const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
-
-    const auth = await authenticateAngelOne({
-      apiKey,
-      clientId,
-      mpin,
-      totpSecret,
-      publicIp,
-      localIp,
-      macAddress,
-    })
-
-    if (!auth.success || !auth.token) {
-      return res.status(401).json({ success: false, error: auth.error || 'Authentication failed' })
-    }
-
     try {
-      const marketData = await fetchMarketData({
-        token: auth.token,
+      // Use SDK wrapper for authentication (uses loginByPassword)
+      const auth = await createAuthenticatedClient({
         apiKey,
         clientId,
-        publicIp,
-        localIp,
-        macAddress,
-        mode,
-        exchangeTokens,
+        password: password || mpin, // Use password if available, else MPIN
+        mpin: mpin, // Fallback
+        totpSecret
       })
-      return res.json({ success: true, data: marketData })
+
+      if (!auth.success || !auth.client) {
+        return res.status(401).json({ success: false, error: auth.error || 'Authentication failed' })
+      }
+
+      // Use SDK wrapper for market data
+      const marketDataResult = await getMarketData(auth.client, {
+        mode: mode || 'LTP',
+        exchangeTokens: exchangeTokens || {
+          NSE: ['99926000', '99926009', '99926037', '99926017'],
+          BSE: ['99919000']
+        }
+      })
+
+      if (!marketDataResult.success) {
+        return res.status(500).json({
+          success: false,
+          error: marketDataResult.error || 'Failed to fetch market data'
+        })
+      }
+
+      // Format response to match frontend expected structure
+      // Frontend expects: data.data.data.fetched
+      return res.json({
+        success: true,
+        data: {
+          status: true,
+          message: 'SUCCESS',
+          data: {
+            fetched: marketDataResult.data?.fetched || [],
+            unfetched: marketDataResult.data?.unfetched || []
+          }
+        }
+      })
     } catch (err) {
       return res.status(500).json({
         success: false,
@@ -1422,26 +1435,24 @@ app.post('/', async (req, res) => {
     }
 
     try {
-      const apiKey = process.env.ANGEL_ONE_API_KEY
-      const clientId = process.env.ANGEL_ONE_CLIENT_ID
-      const mpin = process.env.ANGEL_ONE_PASSWORD
-      const totpSecret = process.env.ANGEL_ONE_TOTP_SECRET
-      const publicIp = process.env.ANGEL_ONE_PUBLIC_IP || '127.0.0.1'
-      const localIp = process.env.ANGEL_ONE_LOCAL_IP || '127.0.0.1'
-      const macAddress = process.env.ANGEL_ONE_MAC_ADDRESS || 'fe:ed:fa:ce:be:ef'
+      // Get user's broker credentials
+      const userCredentials = await getUserBrokerCredentials(userId, 'angel_one')
 
-      const auth = await authenticateAngelOne({
-        apiKey, clientId, mpin, totpSecret, publicIp, localIp, macAddress
+      // Use SDK wrapper for authentication
+      const auth = await createAuthenticatedClient({
+        apiKey: userCredentials.apiKey,
+        clientId: userCredentials.clientId,
+        password: userCredentials.password,
+        mpin: userCredentials.mpin,
+        totpSecret: userCredentials.totpSecret
       })
 
-      if (!auth.success) {
-        return res.status(401).json({ success: false, error: auth.error })
+      if (!auth.success || !auth.client) {
+        return res.status(401).json({ success: false, error: auth.error || 'Authentication failed' })
       }
 
-      const funds = await getBrokerFunds({
-        token: auth.token,
-        apiKey, clientId, publicIp, localIp, macAddress
-      })
+      // Use SDK wrapper for broker funds
+      const funds = await getBrokerFunds(auth.client)
 
       return res.json(funds)
     } catch (err) {
