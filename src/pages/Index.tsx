@@ -6,7 +6,6 @@ import { Shield } from "lucide-react";
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import { FeaturesGlare } from "@/components/FeaturesGlare";
-import MarketOverview from "@/components/MarketOverview";
 import StrategyExplanation from "@/components/StrategyExplanation";
 
 const Index = () => {
@@ -57,7 +56,6 @@ const Index = () => {
       <main>
         <HeroSection onGetStarted={handleGetStarted} />
         <FeaturesGlare />
-        <MarketOverview />
         <StrategyExplanation />
       </main>
 

@@ -6,9 +6,53 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { LogOut, TrendingUp, Activity, BarChart3 } from "lucide-react";
+
+// Component to show connected brokers count
+const ConnectedBrokersCard = ({ userId }: { userId?: string }) => {
+  const [count, setCount] = useState(0);
+  const [brokers, setBrokers] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const fetchBrokers = async () => {
+      const { data } = await supabase
+        .from("broker_accounts")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+
+      if (data) {
+        setBrokers(data);
+        setCount(data.length);
+      }
+    };
+
+    fetchBrokers();
+    const interval = setInterval(fetchBrokers, 30000); // Refresh every 30 seconds
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium text-muted-foreground">Connected Brokers</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-3xl font-bold">{count}</div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {count === 0
+            ? "Connect a broker to start trading"
+            : brokers.map((b) => b.broker_type.replace("_", " ")).join(", ")}
+        </p>
+      </CardContent>
+    </Card>
+  );
+};
 import BrokerIntegration from "@/components/dashboard/BrokerIntegration";
 import StrategyManager from "@/components/dashboard/StrategyManager";
 import PerformanceOverview from "@/components/dashboard/PerformanceOverview";
+import DashboardMarketOverview from "@/components/dashboard/DashboardMarketOverview";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -137,6 +181,8 @@ const Dashboard = () => {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
+            <DashboardMarketOverview userId={user?.id} />
+            
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Card>
                 <CardHeader className="pb-3">
@@ -147,15 +193,7 @@ const Dashboard = () => {
                   <p className="text-xs text-muted-foreground mt-1">Configure your first strategy</p>
                 </CardContent>
               </Card>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Connected Brokers</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">0</div>
-                  <p className="text-xs text-muted-foreground mt-1">Connect a broker to start trading</p>
-                </CardContent>
-              </Card>
+              <ConnectedBrokersCard userId={user?.id} />
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium text-muted-foreground">Today's P&L</CardTitle>

@@ -6,8 +6,68 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Plus, RefreshCw } from "lucide-react";
+import { CheckCircle2, XCircle, Plus, RefreshCw, Wallet } from "lucide-react";
 import { brokerCredentialsSchema } from "@/lib/validation";
+
+// Component to display broker funds
+const BrokerFundsDisplay = ({ brokerId, brokerType, userId }: { brokerId: string; brokerType: string; userId: string }) => {
+  const [funds, setFunds] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchFunds = async () => {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL;
+        if (!backendUrl) return;
+
+        const res = await fetch(`${backendUrl}/getBrokerFunds`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, brokerId }),
+        });
+
+        const data = await res.json();
+        if (data.success && data.availableFunds !== undefined) {
+          setFunds(data.availableFunds);
+        }
+      } catch (error) {
+        console.error('Failed to fetch broker funds:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFunds();
+    // Refresh funds every 30 seconds
+    const interval = setInterval(fetchFunds, 30000);
+    return () => clearInterval(interval);
+  }, [brokerId, userId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Wallet className="h-4 w-4" />
+        <span>Loading funds...</span>
+      </div>
+    );
+  }
+
+  if (funds === null) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+      <Wallet className="h-4 w-4 text-primary" />
+      <div>
+        <div className="text-xs text-muted-foreground">Available Funds</div>
+        <div className="text-lg font-semibold">
+          ₹{new Intl.NumberFormat('en-IN').format(funds)}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface BrokerIntegrationProps {
   userId: string;
@@ -237,19 +297,6 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
               {/* Angel One Specific Fields */}
               {selectedBroker === "angel_one" && (
                 <>
-                  <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg">
-                    <div className="text-sm font-semibold mb-2 text-warning">⚠️ Important: IP Whitelisting Required</div>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Before connecting, you must whitelist our server IP in your Angel One SmartAPI dashboard:
-                    </p>
-                    <div className="bg-background p-2 rounded border font-mono text-sm">
-                      IP Address: <span className="font-bold text-primary">98.88.173.81</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Go to SmartAPI Dashboard → Your App → IP Whitelisting → Add this IP
-                    </p>
-                  </div>
-
                   <div>
                     <Label htmlFor="clientId">Client ID</Label>
                     <Input
@@ -317,61 +364,67 @@ const BrokerIntegration = ({ userId }: BrokerIntegrationProps) => {
           ) : (
             <div className="space-y-4">
               {brokers.map((broker) => (
-                <div key={broker.id} className="flex items-center justify-between p-4 rounded-lg border">
-                  <div className="flex items-center space-x-4">
-                    <div>
-                      {broker.is_active ? (
-                        <CheckCircle2 className="h-8 w-8 text-profit" />
-                      ) : (
-                        <XCircle className="h-8 w-8 text-destructive" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="font-semibold capitalize">{broker.broker_type.replace("_", " ")}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {broker.is_active ? "Connected" : "Disconnected"} • 
-                        Last active: {new Date(broker.last_connected_at).toLocaleDateString()}
+                <Card key={broker.id}>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-4 flex-1">
+                        <div className="mt-1">
+                          {broker.is_active ? (
+                            <CheckCircle2 className="h-6 w-6 text-profit" />
+                          ) : (
+                            <XCircle className="h-6 w-6 text-destructive" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="font-semibold capitalize">{broker.broker_type.replace("_", " ")}</h3>
+                            {broker.is_active ? (
+                              <Badge variant="outline" className="bg-profit/10 text-profit border-profit/20">
+                                Active
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
+                                Inactive
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground mb-3">
+                            Connected: {new Date(broker.last_connected_at || broker.created_at).toLocaleDateString()}
+                          </div>
+                          {broker.is_active && <BrokerFundsDisplay brokerId={broker.id} brokerType={broker.broker_type} userId={userId} />}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {broker.is_active && broker.broker_type === "angel_one" && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => testAngelOneConnection(broker.id)}
+                            disabled={testingConnection === broker.id}
+                          >
+                            {testingConnection === broker.id ? (
+                              <>
+                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                Testing...
+                              </>
+                            ) : (
+                              "Test Connection"
+                            )}
+                          </Button>
+                        )}
+                        {broker.is_active && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleDisconnect(broker.id)}
+                          >
+                            Disconnect
+                          </Button>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {broker.is_active ? (
-                      <Badge variant="outline" className="bg-profit/10 text-profit border-profit/20">
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
-                        Inactive
-                      </Badge>
-                    )}
-                    {broker.is_active && broker.broker_type === "angel_one" && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => testAngelOneConnection(broker.id)}
-                        disabled={testingConnection === broker.id}
-                      >
-                        {testingConnection === broker.id ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                            Testing...
-                          </>
-                        ) : (
-                          "Test Connection"
-                        )}
-                      </Button>
-                    )}
-                    {broker.is_active && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleDisconnect(broker.id)}
-                      >
-                        Disconnect
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}

@@ -165,6 +165,61 @@ app.get('/health', (req, res) => {
   res.json({ ok: true })
 })
 
+// Standalone endpoint for broker funds (used by BrokerIntegration component)
+app.post('/getBrokerFunds', async (req, res) => {
+  const { userId, brokerId } = req.body
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId required' })
+  }
+
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase client not available' })
+    }
+
+    // Get broker type from brokerId if provided, otherwise default to angel_one
+    let brokerType = 'angel_one'
+    if (brokerId) {
+      const { data: broker } = await supabase
+        .from('broker_accounts')
+        .select('broker_type')
+        .eq('id', brokerId)
+        .eq('user_id', userId)
+        .single()
+      if (broker) {
+        brokerType = broker.broker_type
+      }
+    }
+
+    // Get user's broker credentials
+    const userCredentials = await getUserBrokerCredentials(userId, brokerType)
+
+    // Use SDK wrapper for authentication
+    const auth = await createAuthenticatedClient({
+      apiKey: userCredentials.apiKey,
+      clientId: userCredentials.clientId,
+      password: userCredentials.password,
+      mpin: userCredentials.mpin,
+      totpSecret: userCredentials.totpSecret
+    })
+
+    if (!auth.success || !auth.client) {
+      return res.status(401).json({ success: false, error: auth.error || 'Authentication failed' })
+    }
+
+    // Use SDK wrapper for broker funds
+    const funds = await getBrokerFunds(auth.client)
+
+    if (!funds.success) {
+      return res.status(500).json({ success: false, error: funds.error || 'Failed to fetch broker funds' })
+    }
+
+    return res.json({ success: true, availableFunds: funds.availableFunds })
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || 'Failed to fetch broker funds' })
+  }
+})
+
 // Test endpoint to check authentication (for debugging)
 app.post('/test-auth', async (req, res) => {
   try {
@@ -1286,14 +1341,28 @@ app.post('/', async (req, res) => {
   }
 
   if (action === 'getBrokerFunds') {
-    const { userId } = req.body
+    const { userId, brokerId } = req.body
     if (!userId) {
       return res.status(400).json({ success: false, error: 'userId required' })
     }
 
     try {
+      // Get broker type from brokerId if provided, otherwise default to angel_one
+      let brokerType = 'angel_one'
+      if (brokerId && supabase) {
+        const { data: broker } = await supabase
+          .from('broker_accounts')
+          .select('broker_type')
+          .eq('id', brokerId)
+          .eq('user_id', userId)
+          .single()
+        if (broker) {
+          brokerType = broker.broker_type
+        }
+      }
+
       // Get user's broker credentials
-      const userCredentials = await getUserBrokerCredentials(userId, 'angel_one')
+      const userCredentials = await getUserBrokerCredentials(userId, brokerType)
 
       // Use SDK wrapper for authentication
       const auth = await createAuthenticatedClient({
