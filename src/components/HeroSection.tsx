@@ -1,6 +1,6 @@
 import { AnimatedContainer, BgGradient, Hero, TextStagger } from "@/components/blocks/hero-animated";
-import { Button } from "@/components/ui/button";
-import { TrendingUp, Shield, Zap, ArrowRight, Globe } from "lucide-react";
+import { GradientButton } from "@/components/ui/gradient-button";
+import { TrendingUp, Shield, Zap, ArrowRight, Play } from "lucide-react";
 
 interface HeroSectionProps {
   onGetStarted: () => void;
@@ -48,25 +48,17 @@ const HeroSection = ({ onGetStarted }: HeroSectionProps) => {
 
         {/* CTA Buttons */}
         <AnimatedContainer
-          className="flex items-center justify-center gap-4"
+          className="flex flex-wrap items-center justify-center gap-4"
           transition={{ delay: 0.6 }}
         >
-          <Button 
-            size="lg" 
-            onClick={onGetStarted}
-            className="rounded-full bg-primary hover:bg-primary-glow text-primary-foreground shadow-[0_0_30px_hsl(var(--primary)/0.3)] hover:shadow-[0_0_50px_hsl(var(--primary)/0.5)] transition-all duration-300"
-          >
+          <GradientButton onClick={onGetStarted} className="px-12 py-5 text-lg">
             Get Started Free
-            <ArrowRight className="ml-2 w-4 h-4" />
-          </Button>
-          <Button 
-            size="lg" 
-            variant="outline" 
-            className="rounded-full bg-transparent border-primary/30 hover:bg-primary/10 hover:border-primary/50"
-          >
-            <Globe className="mr-2 w-4 h-4" />
+            <ArrowRight />
+          </GradientButton>
+          <GradientButton variant="variant" className="px-12 py-5 text-lg">
+            <Play />
             View Demo
-          </Button>
+          </GradientButton>
         </AnimatedContainer>
       </Hero>
 
