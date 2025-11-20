@@ -237,7 +237,7 @@ serve(async (req) => {
     console.log('MAC Address (to be used):', macAddress);
     console.log('========================================');
 
-    const totp = generateTOTP(totpSecret);
+    const totp = await generateTOTP(totpSecret);
     const authResult = await authenticateAngelOne(apiKey, clientId, mpin, totp, publicIp, localIp, macAddress);
 
     if (!authResult.success || !authResult.token) {
