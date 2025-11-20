@@ -74,7 +74,16 @@ const DashboardMarketOverview = ({ userId }: DashboardMarketOverviewProps) => {
       return;
     }
 
+    let isMounted = true;
+    let abortController: AbortController | null = null;
+
     const fetchLiveData = async () => {
+      // Cancel previous request if still pending
+      if (abortController) {
+        abortController.abort();
+      }
+      abortController = new AbortController();
+
       try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL;
         const exchangeTokens = {
@@ -87,12 +96,16 @@ const DashboardMarketOverview = ({ userId }: DashboardMarketOverviewProps) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'fetchMarketData', mode: 'FULL', exchangeTokens }),
+            signal: abortController.signal,
           });
+
+          // Check if component is still mounted
+          if (!isMounted) return;
 
           const data = await res.json();
           const ok = data.success && data.data && (data.data.status ?? true);
 
-          if (ok) {
+          if (ok && isMounted) {
             const fetched = data.data?.data?.fetched || [];
             const tokenToSymbol: Record<string, string> = {
               '99926000': 'NIFTY',
@@ -135,20 +148,34 @@ const DashboardMarketOverview = ({ userId }: DashboardMarketOverviewProps) => {
             setLastUpdate(new Date());
           }
         }
-      } catch (error) {
-        console.error('Failed to fetch market data:', error);
+      } catch (error: any) {
+        // Ignore abort errors (component unmounted or new request started)
+        if (error.name === 'AbortError') return;
+        if (isMounted) {
+          console.error('Failed to fetch market data:', error);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    // Initial fetch
-    fetchLiveData();
+    // Initial fetch with delay to prevent immediate load
+    const initialTimeout = setTimeout(fetchLiveData, 1000);
 
-    // Auto-update every 5 seconds
-    const interval = setInterval(fetchLiveData, 5000);
+    // Auto-update every 30 seconds (reduced from 5s to prevent CPU overload)
+    // Market data doesn't need to update more frequently than this
+    const interval = setInterval(fetchLiveData, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+      if (abortController) {
+        abortController.abort();
+      }
+    };
   }, [hasBroker]);
 
   const formatPrice = (price: number) => {

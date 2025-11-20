@@ -37,10 +37,16 @@ const BrokerFundsDisplay = ({ brokerId, brokerType, userId }: { brokerId: string
       }
     };
 
-    fetchFunds();
-    // Refresh funds every 30 seconds
-    const interval = setInterval(fetchFunds, 30000);
-    return () => clearInterval(interval);
+    // Initial fetch with delay
+    const initialTimeout = setTimeout(fetchFunds, 2000);
+    
+    // Refresh funds every 60 seconds (reduced from 30s to reduce load)
+    const interval = setInterval(fetchFunds, 60000);
+    
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
   }, [brokerId, userId]);
 
   if (loading) {

@@ -6,6 +6,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { LogOut, TrendingUp, Activity, BarChart3 } from "lucide-react";
+import BrokerIntegration from "@/components/dashboard/BrokerIntegration";
+import StrategyManager from "@/components/dashboard/StrategyManager";
+import PerformanceOverview from "@/components/dashboard/PerformanceOverview";
+import DashboardMarketOverview from "@/components/dashboard/DashboardMarketOverview";
 
 // Component to show connected brokers count
 const ConnectedBrokersCard = ({ userId }: { userId?: string }) => {
@@ -29,7 +33,8 @@ const ConnectedBrokersCard = ({ userId }: { userId?: string }) => {
     };
 
     fetchBrokers();
-    const interval = setInterval(fetchBrokers, 30000); // Refresh every 30 seconds
+    // Refresh every 60 seconds (reduced frequency to prevent CPU overload)
+    const interval = setInterval(fetchBrokers, 60000);
     return () => clearInterval(interval);
   }, [userId]);
 
@@ -49,10 +54,6 @@ const ConnectedBrokersCard = ({ userId }: { userId?: string }) => {
     </Card>
   );
 };
-import BrokerIntegration from "@/components/dashboard/BrokerIntegration";
-import StrategyManager from "@/components/dashboard/StrategyManager";
-import PerformanceOverview from "@/components/dashboard/PerformanceOverview";
-import DashboardMarketOverview from "@/components/dashboard/DashboardMarketOverview";
 
 const Dashboard = () => {
   const navigate = useNavigate();
