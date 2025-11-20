@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { GradientButton } from "@/components/ui/gradient-button";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -77,12 +78,9 @@ const Header = ({ user, onLogin, onLogout }: HeaderProps) => {
               <Button variant="ghost" onClick={onLogin} className="hover:bg-primary/10 hover:text-primary">
                 Login
               </Button>
-              <Button 
-                onClick={onLogin}
-                className="bg-primary hover:bg-primary-glow text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)] hover:shadow-[0_0_30px_hsl(var(--primary)/0.5)] transition-all"
-              >
+              <GradientButton onClick={onLogin} className="px-6 py-3">
                 Get Started
-              </Button>
+              </GradientButton>
             </>
           )}
         </div>

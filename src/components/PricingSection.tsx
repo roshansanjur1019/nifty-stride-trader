@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Check, Star, Zap, Crown } from "lucide-react";
@@ -116,13 +117,22 @@ const PricingSection = ({ onGetStarted }: PricingSectionProps) => {
               </CardHeader>
               
               <CardContent>
-                <Button 
-                  className="w-full mb-6" 
-                  variant={plan.popular ? "primary" : "outline"}
-                  onClick={onGetStarted}
-                >
-                  {plan.buttonText}
-                </Button>
+                {plan.popular ? (
+                  <GradientButton 
+                    className="w-full mb-6" 
+                    onClick={onGetStarted}
+                  >
+                    {plan.buttonText}
+                  </GradientButton>
+                ) : (
+                  <Button 
+                    className="w-full mb-6" 
+                    variant="outline"
+                    onClick={onGetStarted}
+                  >
+                    {plan.buttonText}
+                  </Button>
+                )}
                 
                 <ul className="space-y-3">
                   {plan.features.map((feature, featureIndex) => (
