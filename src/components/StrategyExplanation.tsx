@@ -15,7 +15,7 @@ const StrategyExplanation = () => {
       title: "Strike Selection", 
       time: "3:05 PM",
       icon: <Target className="h-5 w-5" />,
-      description: "Select CE and PE strikes 150 points OTM with minimum ₹80 premium",
+      description: "AI-powered strike selection based on market volatility and premium requirements",
       color: "text-chart-3"
     },
     {
@@ -29,37 +29,37 @@ const StrategyExplanation = () => {
       title: "Risk Monitoring",
       time: "Continuous",
       icon: <Shield className="h-5 w-5" />,
-      description: "Monitor positions with adjustment triggers at 150+ point moves",
+      description: "Advanced trailing stop-loss system protects profits and limits losses automatically",
       color: "text-chart-4"
     },
     {
       title: "Profit Booking",
-      time: "Target Hit",
+      time: "Next Day",
       icon: <Clock className="h-5 w-5" />,
-      description: "Exit at 1% profit or next day at 3:00 PM with trailing stop-loss",
+      description: "Automated exit with intelligent profit protection and risk management",
       color: "text-profit"
     }
   ];
 
   const keyFeatures = [
     {
-      title: "Minimum Premium Check",
-      description: "Both strikes must have ≥₹80 premium, otherwise check next expiry",
+      title: "Intelligent Strike Selection",
+      description: "AI analyzes market conditions and selects optimal strikes with premium validation",
       icon: <Target className="h-4 w-4" />
     },
     {
-      title: "Volatility Adjustment",
-      description: "Use 300-500 point gaps during high VIX periods (>20)",
+      title: "Dynamic Volatility Adjustment",
+      description: "Automatically adjusts strategy parameters based on real-time VIX levels",
       icon: <AlertTriangle className="h-4 w-4" />
     },
     {
-      title: "Position Adjustment",
-      description: "Convert losing strike to equivalent premium on 150+ point moves",
+      title: "Capital Management",
+      description: "Smart lot sizing and capital allocation based on available funds and risk limits",
       icon: <Shield className="h-4 w-4" />
     },
     {
-      title: "Automated Execution",
-      description: "No manual intervention required - fully automated workflow",
+      title: "Fully Automated",
+      description: "No manual intervention required - complete hands-off trading experience",
       icon: <CheckCircle className="h-4 w-4" />
     }
   ];
@@ -146,30 +146,51 @@ const StrategyExplanation = () => {
           </Card>
         </div>
 
-        {/* Example Trade */}
+        {/* Example Trade - Simplified */}
         <Card className="max-w-4xl mx-auto shadow-card">
           <CardHeader>
-            <CardTitle>Example Trade Scenario</CardTitle>
+            <CardTitle>How It Works</CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Our platform handles all the complexity - you just enable auto-execute and let the system work
+            </p>
           </CardHeader>
           <CardContent>
             <div className="bg-gradient-to-r from-background to-muted/20 p-6 rounded-lg border border-border">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
                 <div>
-                  <div className="text-2xl font-bold text-primary mb-2">24750</div>
-                  <div className="text-sm text-muted-foreground">NIFTY Price at 3:10 PM</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-profit mb-2">₹160</div>
-                  <div className="text-sm text-muted-foreground">Total Premium Collected</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    24900 CE (₹85) + 24600 PE (₹75)
+                  <div className="text-3xl font-bold text-primary mb-2">3:10 PM</div>
+                  <div className="text-sm text-muted-foreground mb-1">Daily Entry</div>
+                  <div className="text-xs text-muted-foreground">
+                    System analyzes market and executes automatically
                   </div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-chart-3 mb-2">₹1.60</div>
-                  <div className="text-sm text-muted-foreground">Target Profit (1%)</div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Exit when combined premium = ₹158.40
+                  <div className="text-3xl font-bold text-profit mb-2">24/7</div>
+                  <div className="text-sm text-muted-foreground mb-1">Risk Monitoring</div>
+                  <div className="text-xs text-muted-foreground">
+                    Advanced trailing stop-loss protects your profits
+                  </div>
+                </div>
+                <div>
+                  <div className="text-3xl font-bold text-chart-3 mb-2">Next Day</div>
+                  <div className="text-sm text-muted-foreground mb-1">Automated Exit</div>
+                  <div className="text-xs text-muted-foreground">
+                    Intelligent exit with profit protection
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-6 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                <div className="flex items-start gap-3">
+                  <Shield className="h-5 w-5 text-primary mt-0.5" />
+                  <div>
+                    <div className="font-semibold mb-1">Why Use Our Platform?</div>
+                    <p className="text-sm text-muted-foreground">
+                      Our proprietary algorithm combines market intelligence, volatility analysis, and risk management 
+                      to execute trades at optimal times. The system handles strike selection, premium validation, 
+                      lot sizing, and exit timing - all automatically. You get professional-grade trading without 
+                      the complexity.
+                    </p>
                   </div>
                 </div>
               </div>
