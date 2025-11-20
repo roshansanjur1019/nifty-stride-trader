@@ -1,5 +1,9 @@
-import Hero from "@/components/ui/animated-shader-hero";
-import { TrendingUp, Shield, Zap } from "lucide-react";
+"use client";
+import React from "react";
+import { motion } from "framer-motion";
+import { LampContainer } from "@/components/ui/lamp";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, Shield, Zap, ArrowRight, Globe } from "lucide-react";
 
 interface HeroSectionProps {
   onGetStarted: () => void;
@@ -8,27 +12,60 @@ interface HeroSectionProps {
 const HeroSection = ({ onGetStarted }: HeroSectionProps) => {
   return (
     <>
-      <Hero
-        trustBadge={{
-          text: "AI-Powered Trading Platform",
-          icons: ["🚀", "📈"]
-        }}
-        headline={{
-          line1: "Power and Simplicity",
-          line2: "In One Trading Platform"
-        }}
-        subtitle="A powerful dashboard to manage, track, and optimize your options trading in real-time. Combining security, speed, and elegant simplicity with automated execution."
-        buttons={{
-          primary: {
-            text: "Get Started for Free",
-            onClick: onGetStarted
-          },
-          secondary: {
-            text: "View Demo",
-            onClick: () => console.log('View Demo clicked')
-          }
-        }}
-      />
+      <LampContainer>
+        <motion.div
+          initial={{ opacity: 0.5, y: 100 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{
+            delay: 0.3,
+            duration: 0.8,
+            ease: "easeInOut",
+          }}
+          className="mt-8 flex flex-col items-center gap-6"
+        >
+          {/* Trust Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 backdrop-blur-sm">
+            <span className="text-sm">🚀</span>
+            <span className="text-sm">📈</span>
+            <span className="text-sm font-medium text-primary">AI-Powered Trading Platform</span>
+          </div>
+
+          {/* Main Headline */}
+          <h1 className="bg-gradient-to-br from-foreground to-muted-foreground py-4 bg-clip-text text-center text-4xl font-medium tracking-tight text-transparent md:text-7xl">
+            Power and Simplicity
+            <br />
+            <span className="bg-gradient-to-r from-primary via-primary-glow to-primary bg-clip-text text-transparent">
+              In One Trading Platform
+            </span>
+          </h1>
+
+          {/* Subtitle */}
+          <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto text-center leading-relaxed">
+            A powerful dashboard to manage, track, and optimize your options trading in real-time. 
+            Combining security, speed, and elegant simplicity with automated execution.
+          </p>
+
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+            <Button 
+              size="lg" 
+              onClick={onGetStarted}
+              className="group bg-primary hover:bg-primary-glow text-primary-foreground shadow-[0_0_30px_hsl(var(--primary)/0.3)] hover:shadow-[0_0_50px_hsl(var(--primary)/0.5)] transition-all duration-300 text-base px-8 py-6"
+            >
+              Get Started for Free
+              <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </Button>
+            <Button 
+              size="lg" 
+              variant="outline"
+              className="border-primary/30 hover:bg-primary/10 hover:border-primary/50 text-foreground backdrop-blur-sm text-base px-8 py-6"
+            >
+              <Globe className="mr-2 w-5 h-5" />
+              View Demo
+            </Button>
+          </div>
+        </motion.div>
+      </LampContainer>
 
       {/* Feature highlights below hero */}
       <div className="relative py-16 bg-background">
