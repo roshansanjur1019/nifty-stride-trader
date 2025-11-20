@@ -52,20 +52,9 @@ async function createAuthenticatedClient(credentials) {
       return { success: false, error: 'Authentication failed: No JWT token received' }
     }
 
-    // SDK automatically stores tokens when generateSession is called
-    // No need to manually set them - the SDK handles token management internally
-    // If SDK methods exist, use them; otherwise, tokens are already stored
-    try {
-      if (typeof smartApi.setAccessToken === 'function') {
-        smartApi.setAccessToken(jwtToken)
-      }
-      if (typeof smartApi.setRefreshToken === 'function') {
-        smartApi.setRefreshToken(refreshToken)
-      }
-    } catch (err) {
-      // SDK might handle tokens automatically, ignore if methods don't exist
-      console.log('[SDK] Token storage handled automatically by SDK')
-    }
+    // SDK automatically stores tokens in instance properties when generateSession is called
+    // Tokens are stored as: smartApi.access_token and smartApi.refresh_token
+    // No need to manually set them - the SDK handles this automatically
 
     return {
       success: true,
@@ -150,44 +139,51 @@ function generateTOTP(secret) {
 async function getMarketData(client, options) {
   try {
     const { mode = 'LTP', exchangeTokens } = options
+    const fetch = require('node-fetch')
 
-    // SmartAPI SDK method - check available methods
-    let response
-    
-    try {
-      // Try getMarketData method (most common)
-      if (typeof client.getMarketData === 'function') {
-        response = await client.getMarketData(exchangeTokens, mode)
-      } 
-      // Try quote method (alternative name)
-      else if (typeof client.quote === 'function') {
-        response = await client.quote(exchangeTokens, mode)
+    // Get access token from SDK client instance
+    // SDK stores tokens as properties: access_token, refresh_token, api_key
+    const token = client.access_token || client.jwtToken
+    const apiKey = client.api_key
+
+    if (!token || !apiKey) {
+      return {
+        success: false,
+        error: 'Missing access token or API key',
+        data: { fetched: [], unfetched: [] }
       }
-      // Try getQuote method
-      else if (typeof client.getQuote === 'function') {
-        response = await client.getQuote(exchangeTokens, mode)
-      }
-      else {
-        // Log available methods for debugging
-        console.error('[SDK] Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(client)))
-        throw new Error('SDK does not have getMarketData, quote, or getQuote method')
-      }
-    } catch (sdkError) {
-      console.error('[SDK] Method call error:', sdkError.message)
-      throw sdkError
     }
 
-    // SDK returns: { status: true, message: 'SUCCESS', data: { fetched: [...], unfetched: [...] } }
-    if (response && response.status !== false) {
+    // Use direct API call to Angel One quote endpoint
+    // Endpoint: https://apiconnect.angelone.in/rest/secure/angelbroking/market/v1/quote/
+    const response = await fetch('https://apiconnect.angelone.in/rest/secure/angelbroking/market/v1/quote/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'X-UserType': 'USER',
+        'X-SourceID': 'WEB',
+        'X-PrivateKey': apiKey
+      },
+      body: JSON.stringify({
+        mode: mode,
+        exchangeTokens: exchangeTokens
+      })
+    })
+
+    const data = await response.json()
+
+    if (data && data.status !== false) {
       return {
         success: true,
-        data: response.data || { fetched: [], unfetched: [] }
+        data: data.data || { fetched: [], unfetched: [] }
       }
     }
 
     return {
       success: false,
-      error: response?.message || 'Failed to fetch market data',
+      error: data?.message || 'Failed to fetch market data',
       data: { fetched: [], unfetched: [] }
     }
   } catch (error) {
@@ -378,19 +374,10 @@ async function getTradeBook(client) {
 async function getOptionChain(client, symbol, expiryDate) {
   try {
     const fetch = require('node-fetch')
-    // Try to get access token if method exists, otherwise SDK handles it internally
-    let token = null
-    try {
-      if (typeof client.getAccessToken === 'function') {
-        token = client.getAccessToken()
-      } else if (client.accessToken) {
-        token = client.accessToken
-      }
-    } catch (err) {
-      // SDK might handle token internally
-    }
-    
-    const apiKey = client.api_key || client.apiKey
+    // SDK stores tokens as properties: access_token, api_key
+    // Reference: https://github.com/angel-one/smartapi-javascript
+    const token = client.access_token
+    const apiKey = client.api_key
 
     if (!token || !apiKey) {
       return { success: false, error: 'Missing token or API key' }
@@ -459,39 +446,39 @@ async function createOrderWebSocket(params, onTick) {
  */
 async function refreshToken(client) {
   try {
-    // Try to get refresh token if method exists, otherwise SDK handles it internally
-    let refreshTokenValue = null
-    try {
-      if (typeof client.getRefreshToken === 'function') {
-        refreshTokenValue = client.getRefreshToken()
-      }
-    } catch (err) {
-      // SDK might handle refresh token internally
-    }
+    // SDK stores refresh_token as a property (not a method)
+    // Reference: https://github.com/angel-one/smartapi-javascript
+    const refreshTokenValue = client.refresh_token
     
     if (!refreshTokenValue) {
-      // SDK might have refresh token stored internally, try refresh anyway
-      console.log('[SDK] Refresh token handled internally by SDK')
+      return { success: false, error: 'No refresh token available' }
     }
 
-    // SDK's refreshToken method should handle this
-    const response = await client.refreshToken()
+    // Use direct API call to refresh token (SDK doesn't have refreshToken method)
+    const fetch = require('node-fetch')
+    const response = await fetch('https://apiconnect.angelone.in/rest/auth/angelbroking/jwt/v1/generateTokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${client.access_token}`,
+        'X-UserType': 'USER',
+        'X-SourceID': 'WEB',
+        'X-PrivateKey': client.api_key
+      },
+      body: JSON.stringify({
+        refreshToken: refreshTokenValue
+      })
+    })
 
-    if (response && response.data) {
-      const { jwtToken, refreshToken: newRefreshToken, feedToken } = response.data
+    const data = await response.json()
 
-      // SDK automatically stores tokens, but try to set them if methods exist
-      try {
-        if (typeof client.setAccessToken === 'function') {
-          client.setAccessToken(jwtToken)
-        }
-        if (typeof client.setRefreshToken === 'function') {
-          client.setRefreshToken(newRefreshToken)
-        }
-      } catch (err) {
-        // SDK handles tokens automatically
-        console.log('[SDK] Token refresh handled automatically by SDK')
-      }
+    if (data && data.status && data.data) {
+      const { jwtToken, refreshToken: newRefreshToken, feedToken } = data.data
+
+      // SDK stores tokens as properties - update them directly
+      client.access_token = jwtToken
+      client.refresh_token = newRefreshToken
 
       return {
         success: true,
@@ -519,7 +506,7 @@ async function refreshToken(client) {
  */
 async function logout(client, clientCode) {
   try {
-    // SDK's logout method should handle this
+    // SDK has logout method - use it directly
     const response = await client.logout(clientCode)
 
     return {
