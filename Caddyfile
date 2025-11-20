@@ -1,8 +1,9 @@
 skyspear.in {
-  reverse_proxy frontend:3000
-  handle_path /worker* {
+  handle_path /trading-worker* {
     reverse_proxy trading-worker:4000
   }
+
+  reverse_proxy frontend:3000
 }
 
 www.skyspear.in {
@@ -10,5 +11,5 @@ www.skyspear.in {
 }
 
 api.skyspear.in {
-  reverse_proxy angel-one:8000
+  reverse_proxy trading-worker:4000
 }
