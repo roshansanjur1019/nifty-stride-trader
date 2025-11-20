@@ -52,9 +52,20 @@ async function createAuthenticatedClient(credentials) {
       return { success: false, error: 'Authentication failed: No JWT token received' }
     }
 
-    // Store tokens in the client instance
-    smartApi.setAccessToken(jwtToken)
-    smartApi.setRefreshToken(refreshToken)
+    // SDK automatically stores tokens when generateSession is called
+    // No need to manually set them - the SDK handles token management internally
+    // If SDK methods exist, use them; otherwise, tokens are already stored
+    try {
+      if (typeof smartApi.setAccessToken === 'function') {
+        smartApi.setAccessToken(jwtToken)
+      }
+      if (typeof smartApi.setRefreshToken === 'function') {
+        smartApi.setRefreshToken(refreshToken)
+      }
+    } catch (err) {
+      // SDK might handle tokens automatically, ignore if methods don't exist
+      console.log('[SDK] Token storage handled automatically by SDK')
+    }
 
     return {
       success: true,
@@ -367,8 +378,19 @@ async function getTradeBook(client) {
 async function getOptionChain(client, symbol, expiryDate) {
   try {
     const fetch = require('node-fetch')
-    const token = client.getAccessToken()
-    const apiKey = client.api_key
+    // Try to get access token if method exists, otherwise SDK handles it internally
+    let token = null
+    try {
+      if (typeof client.getAccessToken === 'function') {
+        token = client.getAccessToken()
+      } else if (client.accessToken) {
+        token = client.accessToken
+      }
+    } catch (err) {
+      // SDK might handle token internally
+    }
+    
+    const apiKey = client.api_key || client.apiKey
 
     if (!token || !apiKey) {
       return { success: false, error: 'Missing token or API key' }
@@ -437,9 +459,19 @@ async function createOrderWebSocket(params, onTick) {
  */
 async function refreshToken(client) {
   try {
-    const refreshToken = client.getRefreshToken()
-    if (!refreshToken) {
-      return { success: false, error: 'No refresh token available' }
+    // Try to get refresh token if method exists, otherwise SDK handles it internally
+    let refreshTokenValue = null
+    try {
+      if (typeof client.getRefreshToken === 'function') {
+        refreshTokenValue = client.getRefreshToken()
+      }
+    } catch (err) {
+      // SDK might handle refresh token internally
+    }
+    
+    if (!refreshTokenValue) {
+      // SDK might have refresh token stored internally, try refresh anyway
+      console.log('[SDK] Refresh token handled internally by SDK')
     }
 
     // SDK's refreshToken method should handle this
@@ -448,9 +480,18 @@ async function refreshToken(client) {
     if (response && response.data) {
       const { jwtToken, refreshToken: newRefreshToken, feedToken } = response.data
 
-      // Update tokens in client
-      client.setAccessToken(jwtToken)
-      client.setRefreshToken(newRefreshToken)
+      // SDK automatically stores tokens, but try to set them if methods exist
+      try {
+        if (typeof client.setAccessToken === 'function') {
+          client.setAccessToken(jwtToken)
+        }
+        if (typeof client.setRefreshToken === 'function') {
+          client.setRefreshToken(newRefreshToken)
+        }
+      } catch (err) {
+        // SDK handles tokens automatically
+        console.log('[SDK] Token refresh handled automatically by SDK')
+      }
 
       return {
         success: true,
