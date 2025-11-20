@@ -481,8 +481,7 @@ async function executeAveraging({ tradeId, legId, currentPrice, averagingAmount,
       producttype: 'MIS',
       duration: 'DAY',
       price: currentPrice,
-        quantity: averagingQuantity
-      }
+      quantity: averagingQuantity
     })
 
     if (avgOrder.success) {
