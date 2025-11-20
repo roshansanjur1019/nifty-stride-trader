@@ -319,24 +319,38 @@ async function getBrokerFunds(client) {
     // SmartAPI SDK provides getRMS() method for funds
     const rmsData = await client.getRMS()
 
+    console.log('[SDK] RMS Data response:', JSON.stringify(rmsData, null, 2))
+
     if (rmsData && rmsData.data) {
       // Extract available funds from RMS data
-      // The structure may vary, adjust based on actual response
-      const availableFunds = rmsData.data.availablecash || rmsData.data.available || 0
+      // Angel One RMS structure: { data: { availablecash, usedmargin, etc. } }
+      // Try multiple possible field names
+      const availableFunds = rmsData.data.availablecash || 
+                            rmsData.data.available || 
+                            rmsData.data.availableCash ||
+                            rmsData.data.freecash ||
+                            rmsData.data.freeCash ||
+                            (rmsData.data.total && rmsData.data.used ? 
+                              (parseFloat(rmsData.data.total) - parseFloat(rmsData.data.used)) : 0) ||
+                            0
+
+      const funds = parseFloat(availableFunds) || 0
+      console.log('[SDK] Extracted available funds:', funds)
 
       return {
         success: true,
-        availableFunds: parseFloat(availableFunds) || 0,
+        availableFunds: funds,
         rmsData: rmsData.data
       }
     }
 
+    console.error('[SDK] Invalid RMS response structure:', rmsData)
     return {
       success: false,
-      error: 'Invalid RMS response'
+      error: 'Invalid RMS response structure'
     }
   } catch (error) {
-    console.error('Broker funds fetch error:', error)
+    console.error('[SDK] Broker funds fetch error:', error)
     return {
       success: false,
       error: error.message || 'Failed to fetch broker funds'

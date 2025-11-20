@@ -195,10 +195,11 @@ app.post('/getBrokerFunds', async (req, res) => {
     const userCredentials = await getUserBrokerCredentials(userId, brokerType)
 
     // Use SDK wrapper for authentication
+    // Note: password might not be stored, use mpin as fallback
     const auth = await createAuthenticatedClient({
       apiKey: userCredentials.apiKey,
       clientId: userCredentials.clientId,
-      password: userCredentials.password,
+      password: userCredentials.password || userCredentials.mpin, // Use password if available, else MPIN
       mpin: userCredentials.mpin,
       totpSecret: userCredentials.totpSecret
     })

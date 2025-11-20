@@ -13,12 +13,19 @@ import { brokerCredentialsSchema } from "@/lib/validation";
 const BrokerFundsDisplay = ({ brokerId, brokerType, userId }: { brokerId: string; brokerType: string; userId: string }) => {
   const [funds, setFunds] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchFunds = async () => {
       try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL;
-        if (!backendUrl) return;
+        if (!backendUrl) {
+          setError('Backend URL not configured');
+          setLoading(false);
+          return;
+        }
+
+        console.log('[BrokerFunds] Fetching funds for broker:', brokerId, 'user:', userId);
 
         const res = await fetch(`${backendUrl}/getBrokerFunds`, {
           method: 'POST',
@@ -26,12 +33,24 @@ const BrokerFundsDisplay = ({ brokerId, brokerType, userId }: { brokerId: string
           body: JSON.stringify({ userId, brokerId }),
         });
 
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+          throw new Error(errorData.error || `Failed to fetch funds: ${res.statusText}`);
+        }
+
         const data = await res.json();
+        console.log('[BrokerFunds] Response:', data);
+
         if (data.success && data.availableFunds !== undefined) {
           setFunds(data.availableFunds);
+          setError(null);
+        } else {
+          throw new Error(data.error || 'Invalid response format');
         }
-      } catch (error) {
-        console.error('Failed to fetch broker funds:', error);
+      } catch (error: any) {
+        console.error('[BrokerFunds] Failed to fetch broker funds:', error);
+        setError(error.message || 'Failed to load funds');
+        setFunds(null);
       } finally {
         setLoading(false);
       }
@@ -52,8 +71,20 @@ const BrokerFundsDisplay = ({ brokerId, brokerType, userId }: { brokerId: string
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Wallet className="h-4 w-4" />
+        <Wallet className="h-4 w-4 animate-pulse" />
         <span>Loading funds...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
+        <Wallet className="h-4 w-4 text-destructive" />
+        <div>
+          <div className="text-xs text-destructive font-medium">Failed to load funds</div>
+          <div className="text-xs text-muted-foreground">{error}</div>
+        </div>
       </div>
     );
   }
