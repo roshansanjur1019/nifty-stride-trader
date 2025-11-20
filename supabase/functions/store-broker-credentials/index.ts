@@ -89,12 +89,14 @@ serve(async (req) => {
       throw new Error('Invalid broker type');
     }
 
-    if (apiKey.length < 10 || apiKey.length > 200) {
-      throw new Error('Invalid API key length');
+    // Angel One API keys can be shorter (8+ chars), Zerodha keys are typically longer
+    // Allow minimum 5 characters to accommodate both
+    if (apiKey.length < 5 || apiKey.length > 200) {
+      throw new Error('Invalid API key length (must be 5-200 characters)');
     }
 
-    if (apiSecret.length < 10 || apiSecret.length > 200) {
-      throw new Error('Invalid API secret length');
+    if (apiSecret.length < 5 || apiSecret.length > 200) {
+      throw new Error('Invalid API secret length (must be 5-200 characters)');
     }
 
     // For Angel One, validate additional required fields

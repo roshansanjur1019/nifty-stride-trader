@@ -22,9 +22,10 @@ export const signupSchema = z.object({
 });
 
 // Broker credentials validation schema
+// Note: Angel One API keys can be shorter (8+ chars), Zerodha keys are typically longer
 export const brokerCredentialsSchema = z.object({
-  apiKey: z.string().trim().min(10, { message: "API Key must be at least 10 characters" }).max(200, { message: "API Key must be less than 200 characters" }),
-  apiSecret: z.string().trim().min(10, { message: "API Secret must be at least 10 characters" }).max(200, { message: "API Secret must be less than 200 characters" }),
+  apiKey: z.string().trim().min(5, { message: "API Key must be at least 5 characters" }).max(200, { message: "API Key must be less than 200 characters" }),
+  apiSecret: z.string().trim().min(5, { message: "API Secret must be at least 5 characters" }).max(200, { message: "API Secret must be less than 200 characters" }),
   brokerType: z.enum(["zerodha", "angel_one"], { errorMap: () => ({ message: "Invalid broker type" }) }),
 });
 
