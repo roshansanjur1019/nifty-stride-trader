@@ -48,5 +48,13 @@ jobs:
             if [ -n "${{ secrets.ANGEL_ONE_LOCAL_IP }}" ]; then echo "ANGEL_ONE_LOCAL_IP=${{ secrets.ANGEL_ONE_LOCAL_IP }}" >> .env.angelone; fi
             if [ -n "${{ secrets.ANGEL_ONE_MAC_ADDRESS }}" ]; then echo "ANGEL_ONE_MAC_ADDRESS=${{ secrets.ANGEL_ONE_MAC_ADDRESS }}" >> .env.angelone; fi
             echo "DOMAIN=${{ secrets.DOMAIN }}" > .env.hosting
-            sudo docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env.hosting
+            echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env.hosting
+            echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.hosting
+            # Stop and remove trading-worker container to force recreation
+            sudo docker compose --env-file .env.angelone --env-file .env.hosting stop trading-worker || true
+            sudo docker compose --env-file .env.angelone --env-file .env.hosting rm -f trading-worker || true
+            # Build all services
+            sudo docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
+            # Start all services (trading-worker will be recreated)
             sudo docker compose --env-file .env.angelone --env-file .env.hosting up -d
