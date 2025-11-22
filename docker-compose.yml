@@ -27,7 +27,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/nginx-ssl.conf:ro
       - ./nginx-init.conf:/etc/nginx/nginx-init.conf:ro
       - certbot-www:/var/www/certbot
       - certbot-conf:/etc/letsencrypt
@@ -41,11 +41,18 @@ services:
     networks:
       - default
     restart: unless-stopped
-    command: >
-      sh -c "if [ ! -f /etc/letsencrypt/live/skyspear.in/fullchain.pem ]; then
+    entrypoint: >
+      /bin/sh -c "
+      if [ ! -f /etc/letsencrypt/live/skyspear.in/fullchain.pem ]; then
         cp /etc/nginx/nginx-init.conf /etc/nginx/nginx.conf;
+        echo 'Using HTTP-only config (no SSL certificates yet)';
+      else
+        cp /etc/nginx/nginx-ssl.conf /etc/nginx/nginx.conf;
+        echo 'Using SSL config (certificates found)';
       fi &&
-      nginx -g 'daemon off;'"
+      nginx -t &&
+      nginx -g 'daemon off;'
+      "
 
   certbot:
     image: certbot/certbot
