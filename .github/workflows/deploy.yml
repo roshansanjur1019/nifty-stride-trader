@@ -22,6 +22,9 @@ jobs:
           script: |
             set -e
             
+            # Add ~/bin to PATH for the entire script session
+            export PATH="$HOME/bin:$PATH"
+            
             # Container-Optimized OS already has Docker pre-installed
             # Verify Docker is running
             if ! sudo systemctl is-active --quiet docker; then
@@ -30,14 +33,27 @@ jobs:
               sudo systemctl enable docker || true
             fi
             
-            # Check if docker compose is available
-            if ! command -v docker-compose >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
-              echo "Installing Docker Compose..."
-              # For Container-Optimized OS, we need to install docker-compose plugin
-              # COS uses read-only root, so we install to /usr/local/lib/docker/cli-plugins
-              sudo mkdir -p /usr/local/lib/docker/cli-plugins
-              sudo curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
-              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+            # Check if docker compose is available (try plugin first, then standalone)
+            if docker compose version >/dev/null 2>&1; then
+              echo "Docker Compose plugin is available"
+              docker compose version
+            elif command -v docker-compose >/dev/null 2>&1; then
+              echo "Docker Compose standalone is available"
+              docker-compose version
+            else
+              echo "Installing Docker Compose plugin..."
+              # For Container-Optimized OS, /usr/local/lib is read-only
+              # Install plugin to writable locations (user and root for sudo access)
+              mkdir -p ~/.docker/cli-plugins
+              curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
+              chmod +x ~/.docker/cli-plugins/docker-compose
+              # Also install for root (needed for sudo docker compose)
+              sudo mkdir -p /root/.docker/cli-plugins
+              sudo cp ~/.docker/cli-plugins/docker-compose /root/.docker/cli-plugins/docker-compose
+              sudo chmod +x /root/.docker/cli-plugins/docker-compose
+              # Verify installation
+              docker compose version
+              sudo docker compose version
             fi
             
             # Create app directory in /home (writable in COS)
