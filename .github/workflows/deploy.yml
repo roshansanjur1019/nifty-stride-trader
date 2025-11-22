@@ -41,19 +41,24 @@ jobs:
               echo "Docker Compose standalone is available"
               docker-compose version
             else
-              echo "Installing Docker Compose plugin..."
-              # For Container-Optimized OS, /usr/local/lib is read-only
-              # Install plugin to writable locations (user and root for sudo access)
+              echo "Installing Docker Compose..."
+              # For Container-Optimized OS, most system directories are read-only
+              # Install plugin to user's home directory (writable)
               mkdir -p ~/.docker/cli-plugins
               curl -SL https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
               chmod +x ~/.docker/cli-plugins/docker-compose
-              # Also install for root (needed for sudo docker compose)
-              sudo mkdir -p /root/.docker/cli-plugins
-              sudo cp ~/.docker/cli-plugins/docker-compose /root/.docker/cli-plugins/docker-compose
-              sudo chmod +x /root/.docker/cli-plugins/docker-compose
+              # Also install standalone binary as fallback (in case sudo -E doesn't work)
+              mkdir -p ~/bin
+              cp ~/.docker/cli-plugins/docker-compose ~/bin/docker-compose
+              chmod +x ~/bin/docker-compose
               # Verify installation
               docker compose version
-              sudo docker compose version
+              # Test with sudo -E (preserves HOME environment variable for plugin)
+              if sudo -E docker compose version >/dev/null 2>&1; then
+                echo "Docker Compose plugin works with sudo -E"
+              else
+                echo "Warning: sudo -E may not work, will use standalone binary as fallback"
+              fi
             fi
             
             # Create app directory in /home (writable in COS)
@@ -107,21 +112,21 @@ jobs:
             
             # Stop and remove trading-worker container to force recreation
             echo "Stopping existing containers..."
-            sudo docker compose --env-file .env.angelone --env-file .env.hosting stop trading-worker || true
-            sudo docker compose --env-file .env.angelone --env-file .env.hosting rm -f trading-worker || true
+            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting stop trading-worker || true
+            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting rm -f trading-worker || true
             
             # Build all services
             echo "Building Docker images..."
-            sudo docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
+            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
             
             # Start all services (trading-worker will be recreated)
             echo "Starting all services..."
-            sudo docker compose --env-file .env.angelone --env-file .env.hosting up -d
+            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting up -d
             
             # Verify containers are running
             echo "Container status:"
-            sudo docker compose --env-file .env.angelone --env-file .env.hosting ps
+            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting ps
             
             # Show recent logs
             echo "Recent logs from trading-worker:"
-            sudo docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=50 trading-worker || true
+            sudo -E docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=50 trading-worker || true
