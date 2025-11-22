@@ -39,6 +39,8 @@ services:
         condition: service_started
     networks:
       - default
+    env_file:
+      - ./.env.hosting
 
   trading-worker:
     build:
