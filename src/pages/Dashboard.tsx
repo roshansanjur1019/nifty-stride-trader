@@ -141,6 +141,16 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              {profile?.is_admin && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => navigate("/admin")}
+                  className="text-sm"
+                >
+                  Admin Panel
+                </Button>
+              )}
               <div className="text-sm">
                 <div className="text-muted-foreground">Welcome back,</div>
                 <div className="font-semibold">{profile?.full_name || user?.email}</div>
