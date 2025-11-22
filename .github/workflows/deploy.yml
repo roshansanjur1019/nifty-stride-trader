@@ -176,9 +176,8 @@ jobs:
             echo "Starting all services..."
             docker compose --env-file .env.angelone --env-file .env.hosting up -d nginx frontend trading-worker angel-one
             
-            # Start certbot for SSL certificate renewal
-            echo "Starting certbot for SSL certificate renewal..."
-            docker compose --env-file .env.angelone --env-file .env.hosting up -d certbot
+            # Note: SSL certificates are managed by GCP Load Balancer
+            # No need for certbot - GCP handles SSL automatically
             
             # Verify containers are running
             echo "Container status:"
@@ -215,6 +214,33 @@ jobs:
               echo "Checking Nginx logs..."
               docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=20 nginx || true
             fi
+            
+            # Test main domain routing
+            echo ""
+            echo "=== Main Domain Routing Test ==="
+            if curl -f -H "Host: skyspear.in" http://localhost/ >/dev/null 2>&1; then
+              echo "✓ Main domain (skyspear.in) is routing correctly"
+            else
+              echo "✗ Main domain (skyspear.in) is NOT routing"
+            fi
+            
+            # Test API subdomain routing
+            echo ""
+            echo "=== API Subdomain Routing Test ==="
+            if curl -f -H "Host: api.skyspear.in" http://localhost/health >/dev/null 2>&1; then
+              echo "✓ API subdomain (api.skyspear.in) is routing correctly"
+            else
+              echo "✗ API subdomain (api.skyspear.in) is NOT routing"
+            fi
+            
+            # Test from external (if possible)
+            echo ""
+            echo "=== External Connectivity Test ==="
+            SERVER_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || echo "Unable to determine")
+            echo "Server IP: $SERVER_IP"
+            echo "Testing HTTP from server:"
+            curl -I http://localhost/ 2>&1 | head -5 || echo "Cannot test localhost"
+            curl -I -H "Host: skyspear.in" http://localhost/ 2>&1 | head -5 || echo "Cannot test with Host header"
             
             # Check Nginx logs
             echo ""
@@ -255,11 +281,11 @@ jobs:
             echo ""
             echo ""
             echo "=== SSL Certificate Setup ==="
-            echo "After deployment, run this once to obtain SSL certificates:"
-            echo "  bash init-letsencrypt.sh"
+            echo "SSL certificates are managed by GCP Load Balancer"
+            echo "See GCP_LOAD_BALANCER_SETUP.md for setup instructions"
             echo ""
-            echo "Or manually obtain certificates:"
-            echo "  docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot -d skyspear.in -d www.skyspear.in -d api.skyspear.in"
-            echo ""
-            echo "Certificates will auto-renew via certbot container."
+            echo "Benefits:"
+            echo "  - Automatic certificate provisioning and renewal"
+            echo "  - No manual certificate management"
+            echo "  - Global load balancing and DDoS protection"
             ROOT_SCRIPT

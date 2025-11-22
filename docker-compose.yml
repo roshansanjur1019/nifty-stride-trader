@@ -27,10 +27,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx-ssl.conf:ro
-      - ./nginx-init.conf:/etc/nginx/nginx-init.conf:ro
-      - certbot-www:/var/www/certbot
-      - certbot-conf:/etc/letsencrypt
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       frontend:
         condition: service_started
@@ -41,28 +38,18 @@ services:
     networks:
       - default
     restart: unless-stopped
-    entrypoint: >
-      /bin/sh -c "
-      if [ ! -f /etc/letsencrypt/live/skyspear.in/fullchain.pem ]; then
-        cp /etc/nginx/nginx-init.conf /etc/nginx/nginx.conf;
-        echo 'Using HTTP-only config (no SSL certificates yet)';
-      else
-        cp /etc/nginx/nginx-ssl.conf /etc/nginx/nginx.conf;
-        echo 'Using SSL config (certificates found)';
-      fi &&
-      nginx -t &&
-      nginx -g 'daemon off;'
-      "
 
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - certbot-www:/var/www/certbot
-      - certbot-conf:/etc/letsencrypt
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
-    networks:
-      - default
-    restart: unless-stopped
+  # Certbot removed - using GCP Load Balancer with managed SSL certificates instead
+  # Uncomment if you want to use Let's Encrypt instead of GCP Load Balancer
+  # certbot:
+  #   image: certbot/certbot
+  #   volumes:
+  #     - certbot-www:/var/www/certbot
+  #     - certbot-conf:/etc/letsencrypt
+  #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot --quiet; sleep 12h & wait $${!}; done;'"
+  #   networks:
+  #     - default
+  #   restart: unless-stopped
 
   trading-worker:
     build:
@@ -92,6 +79,4 @@ services:
     networks:
       - default
 
-volumes:
-  certbot-www:
-  certbot-conf:
+# Volumes removed - using GCP Load Balancer instead of certbot

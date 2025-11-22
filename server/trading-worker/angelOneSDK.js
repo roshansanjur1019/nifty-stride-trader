@@ -31,14 +31,25 @@ async function createAuthenticatedClient(credentials) {
     const cacheKey = `${apiKey}_${clientId}`
     const cached = authCache.get(cacheKey)
     
-    if (cached && cached.expiresAt > Date.now()) {
-      console.log('[SDK] Using cached authentication (valid until midnight IST)')
-      return {
-        success: true,
-        client: cached.client,
-        token: cached.token,
-        feedToken: cached.feedToken,
-        refreshToken: cached.refreshToken
+    // Refresh 5 minutes before midnight to avoid any gap
+    const refreshBuffer = 5 * 60 * 1000 // 5 minutes before expiry
+    const now = Date.now()
+    
+    if (cached && cached.expiresAt > now) {
+      // If cache expires within 5 minutes, refresh pre-emptively
+      if (cached.expiresAt - now < refreshBuffer) {
+        console.log('[SDK] Cache expires soon, refreshing authentication pre-emptively')
+        // Clear cache to force re-authentication
+        authCache.delete(cacheKey)
+      } else {
+        console.log('[SDK] Using cached authentication (valid until midnight IST)')
+        return {
+          success: true,
+          client: cached.client,
+          token: cached.token,
+          feedToken: cached.feedToken,
+          refreshToken: cached.refreshToken
+        }
       }
     }
 
