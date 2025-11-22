@@ -53,26 +53,49 @@ const AdminDashboard = () => {
 
         setUser(session.user);
 
-        // Check if user is admin
+        // Check if user is admin using edge function (bypasses RLS)
+        // First get basic profile
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
           .select("*")
           .eq("user_id", session.user.id)
           .single();
 
-        if (profileError) throw profileError;
-
-        if (!profileData?.is_admin) {
-          toast({
-            title: "Access Denied",
-            description: "You don't have admin privileges.",
-            variant: "destructive",
-          });
-          navigate("/dashboard");
-          return;
+        if (profileError) {
+          // If profile doesn't exist, create it
+          const { data: newProfile } = await supabase
+            .from("profiles")
+            .insert({
+              user_id: session.user.id,
+              email: session.user.email || "",
+              is_admin: false,
+              is_active: true,
+            })
+            .select()
+            .single();
+          
+          if (!newProfile?.is_admin) {
+            toast({
+              title: "Access Denied",
+              description: "You don't have admin privileges.",
+              variant: "destructive",
+            });
+            navigate("/dashboard");
+            return;
+          }
+          setProfile(newProfile);
+        } else {
+          if (!profileData?.is_admin) {
+            toast({
+              title: "Access Denied",
+              description: "You don't have admin privileges.",
+              variant: "destructive",
+            });
+            navigate("/dashboard");
+            return;
+          }
+          setProfile(profileData);
         }
-
-        setProfile(profileData);
         await loadData();
       } catch (err: any) {
         console.error("Auth error:", err);
@@ -99,80 +122,88 @@ const AdminDashboard = () => {
   };
 
   const loadUsers = async () => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
 
-    if (error) {
-      console.error("Error loading users:", error);
-      return;
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: { action: "getAllUsers" },
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        setUsers(data.data || []);
+      }
+    } catch (err: any) {
+      console.error("Error loading users:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to load users",
+        variant: "destructive",
+      });
     }
-
-    setUsers(data || []);
   };
 
   const loadStats = async () => {
-    const [usersResult, brokersResult, tradesResult, activeTrialsResult] = await Promise.all([
-      supabase.from("profiles").select("id", { count: "exact", head: true }),
-      supabase.from("broker_accounts").select("id", { count: "exact", head: true }).eq("is_active", true),
-      supabase.from("trades").select("id", { count: "exact", head: true }),
-      supabase.from("profiles").select("id", { count: "exact", head: true }).eq("subscription_plan", "trial"),
-    ]);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: { action: "getStats" },
+      });
 
-    setStats({
-      totalUsers: usersResult.count || 0,
-      activeBrokers: brokersResult.count || 0,
-      totalTrades: tradesResult.count || 0,
-      trialUsers: activeTrialsResult.count || 0,
-    });
+      if (error) throw error;
+
+      if (data?.success) {
+        setStats(data.data || {});
+      }
+    } catch (err: any) {
+      console.error("Error loading stats:", err);
+    }
   };
 
   const loadSettings = async () => {
-    const { data, error } = await supabase
-      .from("admin_settings")
-      .select("*");
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: { action: "getSettings" },
+      });
 
-    if (error) {
-      console.error("Error loading settings:", error);
-      return;
+      if (error) throw error;
+
+      if (data?.success) {
+        const settingsMap: any = {};
+        (data.data || []).forEach((s: any) => {
+          settingsMap[s.setting_key] = s.setting_value;
+        });
+        setSettings(settingsMap);
+      }
+    } catch (err: any) {
+      console.error("Error loading settings:", err);
     }
-
-    const settingsMap: any = {};
-    (data || []).forEach((s: any) => {
-      settingsMap[s.setting_key] = s.setting_value;
-    });
-    setSettings(settingsMap);
   };
 
   const updateUserSubscription = async (userId: string, plan: string, expiresAt?: string) => {
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          subscription_plan: plan,
-          subscription_expires_at: expiresAt || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", userId);
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: {
+          action: "updateUserSubscription",
+          userId,
+          plan,
+          expiresAt,
+        },
+      });
 
       if (error) throw error;
 
-      // Log admin action
-      await supabase.from("admin_audit_log").insert({
-        admin_user_id: user?.id,
-        action_type: "subscription_change",
-        target_user_id: userId,
-        details: { plan, expires_at: expiresAt },
-      });
-
-      toast({
-        title: "Success",
-        description: "User subscription updated successfully",
-      });
-
-      await loadUsers();
-      await loadStats();
+      if (data?.success) {
+        toast({
+          title: "Success",
+          description: "User subscription updated successfully",
+        });
+        await loadUsers();
+        await loadStats();
+      } else {
+        throw new Error(data?.error || "Failed to update subscription");
+      }
     } catch (err: any) {
       toast({
         title: "Error",
@@ -184,25 +215,25 @@ const AdminDashboard = () => {
 
   const toggleUserActive = async (userId: string, isActive: boolean) => {
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ is_active: isActive })
-        .eq("user_id", userId);
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: {
+          action: "toggleUserActive",
+          userId,
+          isActive,
+        },
+      });
 
       if (error) throw error;
 
-      await supabase.from("admin_audit_log").insert({
-        admin_user_id: user?.id,
-        action_type: isActive ? "user_activated" : "user_deactivated",
-        target_user_id: userId,
-      });
-
-      toast({
-        title: "Success",
-        description: `User ${isActive ? "activated" : "deactivated"}`,
-      });
-
-      await loadUsers();
+      if (data?.success) {
+        toast({
+          title: "Success",
+          description: `User ${isActive ? "activated" : "deactivated"}`,
+        });
+        await loadUsers();
+      } else {
+        throw new Error(data?.error || "Failed to update user status");
+      }
     } catch (err: any) {
       toast({
         title: "Error",
@@ -214,31 +245,25 @@ const AdminDashboard = () => {
 
   const updateSetting = async (key: string, value: any) => {
     try {
-      const { error } = await supabase
-        .from("admin_settings")
-        .upsert({
-          setting_key: key,
-          setting_value: value,
-          updated_by: user?.id,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: "setting_key",
-        });
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: {
+          action: "updateSetting",
+          key,
+          value,
+        },
+      });
 
       if (error) throw error;
 
-      await supabase.from("admin_audit_log").insert({
-        admin_user_id: user?.id,
-        action_type: "settings_update",
-        details: { key, value },
-      });
-
-      toast({
-        title: "Success",
-        description: "Setting updated successfully",
-      });
-
-      await loadSettings();
+      if (data?.success) {
+        toast({
+          title: "Success",
+          description: "Setting updated successfully",
+        });
+        await loadSettings();
+      } else {
+        throw new Error(data?.error || "Failed to update setting");
+      }
     } catch (err: any) {
       toast({
         title: "Error",
