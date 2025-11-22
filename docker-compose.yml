@@ -31,8 +31,14 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - frontend
-      - angel-one
+      frontend:
+        condition: service_started
+      trading-worker:
+        condition: service_healthy
+      angel-one:
+        condition: service_started
+    networks:
+      - default
 
   trading-worker:
     build:
@@ -52,7 +58,15 @@ services:
       - "4000:4000"
     depends_on:
       - angel-one
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
+    networks:
+      - default
 
 volumes:
   caddy-data:

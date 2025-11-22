@@ -167,6 +167,14 @@ jobs:
               echo "✓ Caddy can reach trading-worker"
             else
               echo "✗ Caddy cannot reach trading-worker"
+              echo "Restarting Caddy to fix connectivity..."
+              docker compose --env-file .env.angelone --env-file .env.hosting restart caddy
+              sleep 5
+              if docker compose --env-file .env.angelone --env-file .env.hosting exec -T caddy curl -f http://trading-worker:4000/health >/dev/null 2>&1; then
+                echo "✓ Caddy can now reach trading-worker after restart"
+              else
+                echo "✗ Still cannot reach trading-worker - check Docker network"
+              fi
             fi
             
             # Check Caddy logs
@@ -197,4 +205,14 @@ jobs:
             echo "  - www.${DOMAIN} -> ${SERVER_IP}"
             echo ""
             echo "Verify DNS with: dig api.${DOMAIN} A"
+            echo ""
+            echo "=== CRITICAL: GCP Firewall Check ==="
+            echo "⚠️  If api.skyspear.in is timing out, check GCP Firewall Rules:"
+            echo "   1. Go to: GCP Console → VPC Network → Firewall Rules"
+            echo "   2. Ensure these rules exist and allow INGRESS:"
+            echo "      - Port 80 (HTTP) from 0.0.0.0/0"
+            echo "      - Port 443 (HTTPS) from 0.0.0.0/0"
+            echo "   3. If missing, create rules to allow HTTP/HTTPS traffic"
+            echo ""
+            echo "Run diagnostic script: bash diagnose-api-issue.sh"
             ROOT_SCRIPT

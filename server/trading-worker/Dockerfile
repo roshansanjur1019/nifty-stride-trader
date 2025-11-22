@@ -3,7 +3,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Update Alpine packages and install security updates
-RUN apk update && apk upgrade && apk add --no-cache dumb-init
+RUN apk update && apk upgrade && apk add --no-cache dumb-init curl
 
 # Copy package files (including package-lock.json)
 COPY package*.json ./
