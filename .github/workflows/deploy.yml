@@ -133,9 +133,13 @@ jobs:
             echo "Building Docker images..."
             docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
             
-            # Start all services (including Caddy, frontend, trading-worker, angel-one)
+            # Start all services (including Nginx, frontend, trading-worker, angel-one)
             echo "Starting all services..."
-            docker compose --env-file .env.angelone --env-file .env.hosting up -d
+            docker compose --env-file .env.angelone --env-file .env.hosting up -d nginx frontend trading-worker angel-one
+            
+            # Start certbot for SSL certificate renewal
+            echo "Starting certbot for SSL certificate renewal..."
+            docker compose --env-file .env.angelone --env-file .env.hosting up -d certbot
             
             # Verify containers are running
             echo "Container status:"
@@ -160,27 +164,23 @@ jobs:
               echo "✗ Trading-worker health check failed on port 4000"
             fi
             
-            # Check if Caddy can reach trading-worker
+            # Check if Nginx can reach trading-worker
             echo ""
-            echo "=== Caddy to Trading-Worker Connectivity ==="
-            if docker compose --env-file .env.angelone --env-file .env.hosting exec -T caddy curl -f http://trading-worker:4000/health >/dev/null 2>&1; then
-              echo "✓ Caddy can reach trading-worker"
+            echo "=== Nginx to Trading-Worker Connectivity ==="
+            if curl -f -H "Host: api.skyspear.in" http://localhost/health >/dev/null 2>&1; then
+              echo "✓ Nginx can route to trading-worker"
+              curl -s -H "Host: api.skyspear.in" http://localhost/health
+              echo ""
             else
-              echo "✗ Caddy cannot reach trading-worker"
-              echo "Restarting Caddy to fix connectivity..."
-              docker compose --env-file .env.angelone --env-file .env.hosting restart caddy
-              sleep 5
-              if docker compose --env-file .env.angelone --env-file .env.hosting exec -T caddy curl -f http://trading-worker:4000/health >/dev/null 2>&1; then
-                echo "✓ Caddy can now reach trading-worker after restart"
-              else
-                echo "✗ Still cannot reach trading-worker - check Docker network"
-              fi
+              echo "✗ Nginx cannot route to trading-worker"
+              echo "Checking Nginx logs..."
+              docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=20 nginx || true
             fi
             
-            # Check Caddy logs
+            # Check Nginx logs
             echo ""
-            echo "=== Caddy Logs (last 20 lines) ==="
-            docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=20 caddy || true
+            echo "=== Nginx Logs (last 20 lines) ==="
+            docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=20 nginx || true
             
             # Check trading-worker logs
             echo ""
@@ -214,5 +214,13 @@ jobs:
             echo "      - Port 443 (HTTPS) from 0.0.0.0/0"
             echo "   3. If missing, create rules to allow HTTP/HTTPS traffic"
             echo ""
-            echo "Run diagnostic script: bash diagnose-api-issue.sh"
+            echo ""
+            echo "=== SSL Certificate Setup ==="
+            echo "After deployment, run this once to obtain SSL certificates:"
+            echo "  bash init-letsencrypt.sh"
+            echo ""
+            echo "Or manually obtain certificates:"
+            echo "  docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot -d skyspear.in -d www.skyspear.in -d api.skyspear.in"
+            echo ""
+            echo "Certificates will auto-renew via certbot container."
             ROOT_SCRIPT
