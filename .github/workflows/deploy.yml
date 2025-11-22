@@ -107,6 +107,11 @@ jobs:
             echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env.hosting
             echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env.hosting
             echo "SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}" >> .env.hosting
+            # Set backend URL for frontend (defaults to api subdomain)
+            VITE_BACKEND_URL="https://api.${{ secrets.DOMAIN }}"
+            echo "VITE_BACKEND_URL=${VITE_BACKEND_URL}" >> .env.hosting
+            # Export for docker-compose build
+            export VITE_BACKEND_URL
             if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then 
               echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.hosting
             fi
@@ -120,16 +125,15 @@ jobs:
             echo "Disk space check:"
             df -h
             
-            # Stop and remove trading-worker container to force recreation
+            # Stop all containers to force recreation
             echo "Stopping existing containers..."
-            docker compose --env-file .env.angelone --env-file .env.hosting stop trading-worker || true
-            docker compose --env-file .env.angelone --env-file .env.hosting rm -f trading-worker || true
+            docker compose --env-file .env.angelone --env-file .env.hosting down || true
             
             # Build all services
             echo "Building Docker images..."
             docker compose --env-file .env.angelone --env-file .env.hosting build --no-cache frontend trading-worker
             
-            # Start all services (trading-worker will be recreated)
+            # Start all services (including Caddy, frontend, trading-worker, angel-one)
             echo "Starting all services..."
             docker compose --env-file .env.angelone --env-file .env.hosting up -d
             
@@ -137,7 +141,60 @@ jobs:
             echo "Container status:"
             docker compose --env-file .env.angelone --env-file .env.hosting ps
             
-            # Show recent logs
-            echo "Recent logs from trading-worker:"
+            # Wait for services to be ready
+            echo "Waiting for services to be ready..."
+            sleep 15
+            
+            # Verify all containers are running
+            echo "=== Container Status ==="
+            docker compose --env-file .env.angelone --env-file .env.hosting ps
+            
+            # Check trading-worker health (internal)
+            echo ""
+            echo "=== Trading-Worker Health Check (Internal) ==="
+            if curl -f http://localhost:4000/health >/dev/null 2>&1; then
+              echo "✓ Trading-worker is healthy on port 4000"
+              curl -s http://localhost:4000/health | head -c 100
+              echo ""
+            else
+              echo "✗ Trading-worker health check failed on port 4000"
+            fi
+            
+            # Check if Caddy can reach trading-worker
+            echo ""
+            echo "=== Caddy to Trading-Worker Connectivity ==="
+            if docker compose --env-file .env.angelone --env-file .env.hosting exec -T caddy curl -f http://trading-worker:4000/health >/dev/null 2>&1; then
+              echo "✓ Caddy can reach trading-worker"
+            else
+              echo "✗ Caddy cannot reach trading-worker"
+            fi
+            
+            # Check Caddy logs
+            echo ""
+            echo "=== Caddy Logs (last 20 lines) ==="
+            docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=20 caddy || true
+            
+            # Check trading-worker logs
+            echo ""
+            echo "=== Trading-Worker Logs (last 50 lines) ==="
             docker compose --env-file .env.angelone --env-file .env.hosting logs --tail=50 trading-worker || true
+            
+            # DNS and domain verification
+            echo ""
+            echo "=== Domain Configuration ==="
+            DOMAIN=$(grep DOMAIN .env.hosting | cut -d'=' -f2 || echo 'NOT SET')
+            echo "DOMAIN: ${DOMAIN}"
+            echo "VITE_BACKEND_URL: $(grep VITE_BACKEND_URL .env.hosting | cut -d'=' -f2 || echo 'NOT SET')"
+            
+            # Get server IP
+            SERVER_IP=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || echo "Unable to determine")
+            echo "Server Public IP: ${SERVER_IP}"
+            echo ""
+            echo "=== DNS Verification Instructions ==="
+            echo "Ensure these DNS A records point to ${SERVER_IP}:"
+            echo "  - ${DOMAIN} -> ${SERVER_IP}"
+            echo "  - api.${DOMAIN} -> ${SERVER_IP}"
+            echo "  - www.${DOMAIN} -> ${SERVER_IP}"
+            echo ""
+            echo "Verify DNS with: dig api.${DOMAIN} A"
             ROOT_SCRIPT

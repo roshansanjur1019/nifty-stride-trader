@@ -11,5 +11,9 @@ www.skyspear.in {
 }
 
 api.skyspear.in {
-  reverse_proxy trading-worker:4000
+  reverse_proxy trading-worker:4000 {
+    health_uri /health
+    health_interval 10s
+    health_timeout 5s
+  }
 }
