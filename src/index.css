@@ -106,70 +106,70 @@
   }
 
   :root {
-    /* Dark base with deep blacks - inspired by modern crypto dashboards */
-    --background: 220 20% 6%;
-    --foreground: 180 5% 96%;
+    /* Premium Fintech Theme - Deep Blue & Gold */
+    --background: 222 47% 11%; /* Deep Navy Blue */
+    --foreground: 210 40% 98%;
     
-    /* Card surfaces with subtle elevation */
-    --card: 220 18% 9%;
-    --card-foreground: 180 5% 96%;
+    /* Card surfaces */
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
     
-    --popover: 220 18% 9%;
-    --popover-foreground: 180 5% 96%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
     
-    /* Vibrant teal/cyan primary - signature color */
-    --primary: 174 100% 50%;
-    --primary-foreground: 220 20% 6%;
-    --primary-glow: 174 100% 65%;
+    /* Primary - Royal Blue/Indigo */
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --primary-glow: 217 91% 75%;
     
-    /* Muted teal secondary */
-    --secondary: 174 40% 20%;
-    --secondary-foreground: 174 100% 90%;
+    /* Secondary - Muted Blue */
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
     
-    /* Subtle muted surfaces */
-    --muted: 220 15% 15%;
-    --muted-foreground: 180 5% 60%;
+    /* Muted surfaces */
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
     
-    /* Accent teal */
-    --accent: 174 60% 45%;
-    --accent-foreground: 180 5% 96%;
+    /* Accent - Gold */
+    --accent: 43 96% 58%;
+    --accent-foreground: 222 47% 11%;
     
     /* Destructive red */
     --destructive: 0 62.8% 50%;
-    --destructive-foreground: 180 5% 96%;
+    --destructive-foreground: 210 40% 98%;
     
     /* Borders and inputs */
-    --border: 220 15% 18%;
-    --input: 220 15% 15%;
-    --ring: 174 100% 50%;
+    --border: 217 33% 25%;
+    --input: 217 33% 17%;
+    --ring: 217 91% 60%;
     
     --radius: 0.75rem;
     
-    /* Chart colors with teal theme */
-    --chart-1: 174 100% 50%;
-    --chart-2: 142 76% 45%;
-    --chart-3: 200 90% 55%;
-    --chart-4: 150 65% 50%;
-    --chart-5: 190 80% 60%;
+    /* Chart colors */
+    --chart-1: 217 91% 60%;
+    --chart-2: 43 96% 58%;
+    --chart-3: 142 76% 45%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
     
     /* Trading specific colors */
     --profit: 142.1 76.2% 45%;
-    --profit-foreground: 220 20% 6%;
+    --profit-foreground: 222 47% 11%;
     --profit-glow: 142.1 70% 60%;
     
     --loss: 0 84.2% 55%;
-    --loss-foreground: 180 5% 96%;
+    --loss-foreground: 210 40% 98%;
     --loss-glow: 0 84.2% 70%;
     
     /* Sidebar specific colors */
-    --sidebar-background: 220 18% 8%;
-    --sidebar-foreground: 180 5% 96%;
-    --sidebar-primary: 174 100% 50%;
-    --sidebar-primary-foreground: 220 20% 6%;
-    --sidebar-accent: 174 40% 20%;
-    --sidebar-accent-foreground: 174 100% 90%;
-    --sidebar-border: 220 15% 18%;
-    --sidebar-ring: 174 100% 50%;
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 25%;
+    --sidebar-ring: 217 91% 60%;
   }
 }
 

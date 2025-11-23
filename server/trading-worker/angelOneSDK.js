@@ -173,7 +173,9 @@ async function createAuthenticatedClient(credentials) {
       token: jwtToken,
       feedToken: feedToken,
       refreshToken: refreshToken,
-      expiresAt: istMidnight.getTime()
+      expiresAt: istMidnight.getTime(),
+      apiKey: apiKey,
+      clientId: clientId // Store for cache clearing
     })
     
     console.log('[SDK] Authentication successful and cached until midnight IST')
@@ -298,6 +300,26 @@ async function getMarketData(client, options) {
 
     const data = await response.json()
 
+    // Check for invalid token error
+    if (data && (data.message === 'Invalid Token' || data.errorCode === 'AG8001' || 
+        (data.status === false && (data.message?.includes('Invalid Token') || data.message?.includes('invalid'))))) {
+      console.error('[SDK] Invalid token detected in market data response - clearing cache')
+      // Clear all cache entries for this client
+      for (const [key, value] of authCache.entries()) {
+        if (value.client === client || (value.apiKey === apiKey)) {
+          authCache.delete(key)
+          console.log('[SDK] Cleared cache entry:', key)
+          break
+        }
+      }
+      return {
+        success: false,
+        error: 'Invalid token - authentication required',
+        requiresReauth: true,
+        data: { fetched: [], unfetched: [] }
+      }
+    }
+
     if (data && data.status !== false) {
       return {
         success: true,
@@ -332,6 +354,26 @@ async function getBrokerFunds(client) {
 
     console.log('[SDK] RMS Data response:', JSON.stringify(rmsData, null, 2))
 
+    // Check for invalid token error
+    if (rmsData && (rmsData.message === 'Invalid Token' || rmsData.errorCode === 'AG8001' || 
+        (rmsData.success === false && (rmsData.message?.includes('Invalid Token') || rmsData.message?.includes('invalid'))))) {
+      console.error('[SDK] Invalid token detected in RMS response - clearing cache')
+      // Clear all cache entries (token is invalid, need fresh auth)
+      // Find and delete the cache entry for this client
+      for (const [key, value] of authCache.entries()) {
+        if (value.client === client || (value.apiKey === client.api_key && value.clientId === client.client_code)) {
+          authCache.delete(key)
+          console.log('[SDK] Cleared cache entry:', key)
+          break
+        }
+      }
+      return {
+        success: false,
+        error: 'Invalid token - authentication required',
+        requiresReauth: true
+      }
+    }
+
     if (rmsData && rmsData.data) {
       // Extract available funds from RMS data
       // Angel One RMS structure: { data: { availablecash, usedmargin, etc. } }
@@ -362,6 +404,25 @@ async function getBrokerFunds(client) {
     }
   } catch (error) {
     console.error('[SDK] Broker funds fetch error:', error)
+    
+    // Check if error indicates invalid token
+    if (error.message && (error.message.includes('Invalid Token') || error.message.includes('AG8001'))) {
+      console.error('[SDK] Invalid token detected in error - clearing cache')
+      // Clear all cache entries for this client
+      for (const [key, value] of authCache.entries()) {
+        if (value.client === client || (value.apiKey === client.api_key && value.clientId === client.client_code)) {
+          authCache.delete(key)
+          console.log('[SDK] Cleared cache entry:', key)
+          break
+        }
+      }
+      return {
+        success: false,
+        error: 'Invalid token - authentication required',
+        requiresReauth: true
+      }
+    }
+    
     return {
       success: false,
       error: error.message || 'Failed to fetch broker funds'

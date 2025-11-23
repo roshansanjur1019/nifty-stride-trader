@@ -235,7 +235,25 @@ app.post('/getBrokerFunds', async (req, res) => {
     }
 
     // Use SDK wrapper for broker funds
-    const funds = await getBrokerFunds(auth.client)
+    let funds = await getBrokerFunds(auth.client)
+
+    // If token is invalid, clear cache and retry with fresh authentication
+    if (!funds.success && funds.requiresReauth) {
+      console.log('[getBrokerFunds] Token invalid, re-authenticating...')
+      // Clear cache was already done in getBrokerFunds, now re-authenticate
+      const reAuth = await createAuthenticatedClient({
+        apiKey: userCredentials.apiKey,
+        clientId: userCredentials.clientId,
+        password: userCredentials.password || userCredentials.mpin,
+        mpin: userCredentials.mpin,
+        totpSecret: userCredentials.totpSecret
+      })
+      
+      if (reAuth.success && reAuth.client) {
+        // Retry with fresh authentication
+        funds = await getBrokerFunds(reAuth.client)
+      }
+    }
 
     if (!funds.success) {
       return res.status(500).json({ success: false, error: funds.error || 'Failed to fetch broker funds' })
@@ -387,7 +405,21 @@ app.post('/precheck', async (req, res) => {
             totpSecret: userCredentials.totpSecret
           })
           if (auth.success && auth.client) {
-            const funds = await getBrokerFunds(auth.client)
+            let funds = await getBrokerFunds(auth.client)
+            // If token is invalid, re-authenticate and retry
+            if (!funds.success && funds.requiresReauth) {
+              console.log('[Precheck] Token invalid, re-authenticating...')
+              const reAuth = await createAuthenticatedClient({
+                apiKey: userCredentials.apiKey,
+                clientId: userCredentials.clientId,
+                password: userCredentials.password,
+                mpin: userCredentials.mpin,
+                totpSecret: userCredentials.totpSecret
+              })
+              if (reAuth.success && reAuth.client) {
+                funds = await getBrokerFunds(reAuth.client)
+              }
+            }
             if (funds.success) {
               availableFunds = funds.availableFunds || availableFunds
             }
@@ -480,7 +512,21 @@ async function executeMarketIntelligenceStrategies(userId, userConfigs, marketIn
       return
     }
 
-    const fundsResult = await getBrokerFunds(auth.client)
+    let fundsResult = await getBrokerFunds(auth.client)
+    // If token is invalid, re-authenticate and retry
+    if (!fundsResult.success && fundsResult.requiresReauth) {
+      console.log('[MarketIntel] Token invalid, re-authenticating...')
+      const reAuth = await createAuthenticatedClient({
+        apiKey: userCredentials.apiKey,
+        clientId: userCredentials.clientId,
+        password: userCredentials.password || userCredentials.mpin,
+        mpin: userCredentials.mpin,
+        totpSecret: userCredentials.totpSecret
+      })
+      if (reAuth.success && reAuth.client) {
+        fundsResult = await getBrokerFunds(reAuth.client)
+      }
+    }
     if (!fundsResult.success) {
       console.error(`[MarketIntel] Failed to fetch funds for user ${userId}`)
       return
@@ -1477,7 +1523,24 @@ app.post('/', async (req, res) => {
       }
 
       // Use SDK wrapper for broker funds
-      const funds = await getBrokerFunds(auth.client)
+      let funds = await getBrokerFunds(auth.client)
+
+      // If token is invalid, clear cache and retry with fresh authentication
+      if (!funds.success && funds.requiresReauth) {
+        console.log('[getBrokerFunds] Token invalid, re-authenticating...')
+        const reAuth = await createAuthenticatedClient({
+          apiKey: userCredentials.apiKey,
+          clientId: userCredentials.clientId,
+          password: userCredentials.password || userCredentials.mpin,
+          mpin: userCredentials.mpin,
+          totpSecret: userCredentials.totpSecret
+        })
+        
+        if (reAuth.success && reAuth.client) {
+          // Retry with fresh authentication
+          funds = await getBrokerFunds(reAuth.client)
+        }
+      }
 
       return res.json(funds)
     } catch (err) {
